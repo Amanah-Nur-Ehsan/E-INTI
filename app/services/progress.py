@@ -9,7 +9,7 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import CitationRecommendation, Claim, Draft, ReferencePaper
+from app.db.models import AcceptedCitation, CitationRecommendation, Claim, Draft, ReferencePaper
 from app.db.models.enums import EnrichmentStatus
 from app.schemas.analysis import ClaimCounts, ReferenceCounts
 
@@ -68,6 +68,31 @@ async def claim_counts(session: AsyncSession, draft_id: uuid.UUID) -> ClaimCount
     ).scalar_one()
 
     return ClaimCounts(total=total, needs_citation=needs, with_recommendations=with_recs)
+
+
+async def accepted_citation_counts(session: AsyncSession, draft_id: uuid.UUID) -> tuple[int, int]:
+    """Returns (total accepted citation rows, distinct claims with >=1 accepted).
+
+    A claim can have more than one accepted reference, so these two counts
+    diverge -- the dashboard's coverage percentage needs the second one.
+    """
+    total = (
+        await session.execute(
+            select(func.count())
+            .select_from(AcceptedCitation)
+            .join(Claim, Claim.id == AcceptedCitation.claim_id)
+            .where(Claim.draft_id == draft_id)
+        )
+    ).scalar_one()
+    distinct_claims = (
+        await session.execute(
+            select(func.count(func.distinct(AcceptedCitation.claim_id)))
+            .select_from(AcceptedCitation)
+            .join(Claim, Claim.id == AcceptedCitation.claim_id)
+            .where(Claim.draft_id == draft_id)
+        )
+    ).scalar_one()
+    return total, distinct_claims
 
 
 async def latest_draft_id(session: AsyncSession, project_id: uuid.UUID) -> uuid.UUID | None:

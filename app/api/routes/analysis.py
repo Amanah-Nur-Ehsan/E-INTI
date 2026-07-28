@@ -7,8 +7,19 @@ from sqlalchemy import func, select
 from app.api.deps import ProjectDep, SessionDep
 from app.db.models import AnalysisRun, Draft, ReferencePaper
 from app.db.models.enums import RunStatus
-from app.schemas.analysis import AnalysisRunAccepted, AnalysisRunRequest, AnalysisRunStatus
-from app.services.progress import claim_counts, latest_draft_id, reference_counts
+from app.schemas.analysis import (
+    AnalysisRunAccepted,
+    AnalysisRunRequest,
+    AnalysisRunStatus,
+    ClaimCounts,
+    ProjectSummary,
+)
+from app.services.progress import (
+    accepted_citation_counts,
+    claim_counts,
+    latest_draft_id,
+    reference_counts,
+)
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["analysis"])
 
@@ -85,13 +96,12 @@ async def run_analysis(
     return AnalysisRunAccepted(run_id=run.id, draft_id=draft_id, status=run.status)
 
 
-@router.get("/analysis/status", response_model=AnalysisRunStatus)
-async def analysis_status(project: ProjectDep, session: SessionDep) -> AnalysisRunStatus:
-    run = (
+async def _latest_run(session, project_id: uuid.UUID) -> AnalysisRun | None:
+    return (
         (
             await session.execute(
                 select(AnalysisRun)
-                .where(AnalysisRun.project_id == project.id)
+                .where(AnalysisRun.project_id == project_id)
                 .order_by(AnalysisRun.created_at.desc())
                 .limit(1)
             )
@@ -99,9 +109,9 @@ async def analysis_status(project: ProjectDep, session: SessionDep) -> AnalysisR
         .scalars()
         .first()
     )
-    if run is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No analysis run for this project")
 
+
+async def _build_run_status(session, project_id: uuid.UUID, run: AnalysisRun) -> AnalysisRunStatus:
     # The worker writes through a different connection; expire to read fresh state.
     await session.refresh(run)
     return AnalysisRunStatus(
@@ -112,6 +122,48 @@ async def analysis_status(project: ProjectDep, session: SessionDep) -> AnalysisR
         error=run.error,
         started_at=run.started_at,
         finished_at=run.finished_at,
-        references=await reference_counts(session, project.id),
+        references=await reference_counts(session, project_id),
         claims=await claim_counts(session, run.draft_id),
+    )
+
+
+@router.get("/analysis/status", response_model=AnalysisRunStatus)
+async def analysis_status(project: ProjectDep, session: SessionDep) -> AnalysisRunStatus:
+    run = await _latest_run(session, project.id)
+    if run is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No analysis run for this project")
+    return await _build_run_status(session, project.id, run)
+
+
+@router.get("/summary", response_model=ProjectSummary)
+async def project_summary(project: ProjectDep, session: SessionDep) -> ProjectSummary:
+    """Dashboard data in one call: reference/claim counts, acceptance
+    coverage, and the latest analysis run's status (if any has run yet).
+    """
+    draft_id = await latest_draft_id(session, project.id)
+    run = await _latest_run(session, project.id)
+
+    references = await reference_counts(session, project.id)
+    if draft_id is not None:
+        claims = await claim_counts(session, draft_id)
+        accepted_total, claims_with_accepted = await accepted_citation_counts(session, draft_id)
+    else:
+        claims = ClaimCounts(total=0, needs_citation=0, with_recommendations=0)
+        accepted_total, claims_with_accepted = 0, 0
+
+    coverage = (
+        round(100 * claims_with_accepted / claims.needs_citation, 1)
+        if claims.needs_citation > 0
+        else 0.0
+    )
+
+    return ProjectSummary(
+        project_id=project.id,
+        draft_id=draft_id,
+        references=references,
+        claims=claims,
+        accepted_citations=accepted_total,
+        claims_with_accepted=claims_with_accepted,
+        coverage_percentage=coverage,
+        latest_run=await _build_run_status(session, project.id, run) if run else None,
     )

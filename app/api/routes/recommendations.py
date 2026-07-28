@@ -1,10 +1,11 @@
 import uuid
+from collections import defaultdict
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import SessionDep
+from app.api.deps import DraftDep, SessionDep
 from app.db.models import AcceptedCitation, CitationRecommendation, Claim, ReferencePaper
 from app.db.models.enums import UserDecision
 from app.schemas.recommendation import (
@@ -12,8 +13,9 @@ from app.schemas.recommendation import (
     RecommendationRead,
     ReferenceSummary,
     ScoreBreakdownOut,
+    SetDecisionRequest,
 )
-from app.services.citation_formatting_service import build_citation_context
+from app.services.citation_formatting_service import build_citation_context, join_in_text
 
 router = APIRouter(tags=["recommendations"])
 
@@ -95,6 +97,54 @@ async def list_recommendations(
     return [_serialize(rec, ref) for rec, ref in rows]
 
 
+@router.get("/drafts/{draft_id}/recommendations", response_model=dict[uuid.UUID, list[RecommendationRead]])
+async def list_recommendations_for_draft(
+    draft: DraftDep, session: SessionDep, limit_per_claim: int = Query(default=5, ge=1, le=20)
+) -> dict[uuid.UUID, list[RecommendationRead]]:
+    """All recommendations for every claim in a draft, in one request --
+    the review screen would otherwise need one round trip per claim
+    (55 claims = 55 requests on the real validation paper).
+    """
+    rows = (
+        await session.execute(
+            select(CitationRecommendation, ReferencePaper)
+            .join(ReferencePaper, ReferencePaper.id == CitationRecommendation.reference_id)
+            .join(Claim, Claim.id == CitationRecommendation.claim_id)
+            .where(Claim.draft_id == draft.id)
+            .order_by(CitationRecommendation.claim_id, CitationRecommendation.rank)
+        )
+    ).all()
+
+    by_claim: dict[uuid.UUID, list[RecommendationRead]] = defaultdict(list)
+    for rec, ref in rows:
+        if len(by_claim[rec.claim_id]) < limit_per_claim:
+            by_claim[rec.claim_id].append(_serialize(rec, ref))
+    return dict(by_claim)
+
+
+@router.get("/drafts/{draft_id}/accepted-citations", response_model=dict[uuid.UUID, str])
+async def accepted_citations_for_draft(draft: DraftDep, session: SessionDep) -> dict[uuid.UUID, str]:
+    """claim_id -> the joined citation text ghost text should render, e.g.
+    "(Smith, 2023; Lee et al., 2024)" when a claim has multiple accepted
+    references. Kept separate from the recommendations payload since it's
+    a per-claim aggregate rather than a per-recommendation field.
+    """
+    rows = (
+        await session.execute(
+            select(AcceptedCitation.claim_id, AcceptedCitation.citation_text)
+            .join(Claim, Claim.id == AcceptedCitation.claim_id)
+            .where(Claim.draft_id == draft.id)
+            .order_by(AcceptedCitation.created_at)
+        )
+    ).all()
+
+    by_claim: dict[uuid.UUID, list[str]] = defaultdict(list)
+    for claim_id, citation_text in rows:
+        if citation_text:
+            by_claim[claim_id].append(citation_text)
+    return {claim_id: join_in_text(texts) for claim_id, texts in by_claim.items()}
+
+
 async def _get_recommendation(session, recommendation_id: uuid.UUID) -> CitationRecommendation:
     recommendation = (
         await session.execute(
@@ -110,14 +160,12 @@ async def _get_recommendation(session, recommendation_id: uuid.UUID) -> Citation
     return recommendation
 
 
-@router.post("/recommendations/{recommendation_id}/accept", response_model=RecommendationRead)
-async def accept_recommendation(
-    recommendation_id: uuid.UUID, session: SessionDep, payload: DecisionRequest | None = None
+async def _apply_decision(
+    session, recommendation: CitationRecommendation, decision: str, note: str | None
 ) -> RecommendationRead:
-    recommendation = await _get_recommendation(session, recommendation_id)
-    recommendation.user_decision = UserDecision.ACCEPTED
-    if payload and payload.note:
-        recommendation.user_note = payload.note
+    recommendation.user_decision = decision
+    if note is not None:
+        recommendation.user_note = note
 
     existing = (
         await session.execute(
@@ -127,20 +175,51 @@ async def accept_recommendation(
             )
         )
     ).scalar_one_or_none()
-    if existing is None:
-        session.add(
-            AcceptedCitation(
-                claim_id=recommendation.claim_id,
-                reference_id=recommendation.reference_id,
-                recommendation_id=recommendation.id,
+
+    if decision == UserDecision.ACCEPTED:
+        if existing is None:
+            session.add(
+                AcceptedCitation(
+                    claim_id=recommendation.claim_id,
+                    reference_id=recommendation.reference_id,
+                    recommendation_id=recommendation.id,
+                )
             )
-        )
-        await session.flush()
+            await session.flush()
+    else:
+        # REJECTED or IRRELEVANT: an existing acceptance must not survive
+        # a change of mind.
+        if existing is not None:
+            await session.delete(existing)
+            await session.flush()
 
     await _recompute_accepted_citation_texts(session, recommendation.claim.draft_id)
     await session.commit()
     reference = await session.get(ReferencePaper, recommendation.reference_id)
     return _serialize(recommendation, reference)
+
+
+@router.post("/recommendations/{recommendation_id}/decision", response_model=RecommendationRead)
+async def set_recommendation_decision(
+    recommendation_id: uuid.UUID, payload: SetDecisionRequest, session: SessionDep
+) -> RecommendationRead:
+    if payload.decision not in (UserDecision.ACCEPTED, UserDecision.REJECTED, UserDecision.IRRELEVANT):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"decision must be one of ACCEPTED, REJECTED, IRRELEVANT (got {payload.decision!r})",
+        )
+    recommendation = await _get_recommendation(session, recommendation_id)
+    return await _apply_decision(session, recommendation, payload.decision, payload.note)
+
+
+@router.post("/recommendations/{recommendation_id}/accept", response_model=RecommendationRead)
+async def accept_recommendation(
+    recommendation_id: uuid.UUID, session: SessionDep, payload: DecisionRequest | None = None
+) -> RecommendationRead:
+    recommendation = await _get_recommendation(session, recommendation_id)
+    return await _apply_decision(
+        session, recommendation, UserDecision.ACCEPTED, payload.note if payload else None
+    )
 
 
 @router.post("/recommendations/{recommendation_id}/reject", response_model=RecommendationRead)
@@ -148,24 +227,6 @@ async def reject_recommendation(
     recommendation_id: uuid.UUID, session: SessionDep, payload: DecisionRequest | None = None
 ) -> RecommendationRead:
     recommendation = await _get_recommendation(session, recommendation_id)
-    recommendation.user_decision = UserDecision.REJECTED
-    if payload and payload.note:
-        recommendation.user_note = payload.note
-
-    # Accepting then rejecting must not leave a stale accepted citation behind.
-    accepted = (
-        await session.execute(
-            select(AcceptedCitation).where(
-                AcceptedCitation.claim_id == recommendation.claim_id,
-                AcceptedCitation.reference_id == recommendation.reference_id,
-            )
-        )
-    ).scalar_one_or_none()
-    if accepted is not None:
-        await session.delete(accepted)
-        await session.flush()
-
-    await _recompute_accepted_citation_texts(session, recommendation.claim.draft_id)
-    await session.commit()
-    reference = await session.get(ReferencePaper, recommendation.reference_id)
-    return _serialize(recommendation, reference)
+    return await _apply_decision(
+        session, recommendation, UserDecision.REJECTED, payload.note if payload else None
+    )

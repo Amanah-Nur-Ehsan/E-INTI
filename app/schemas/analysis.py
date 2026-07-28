@@ -40,3 +40,19 @@ class AnalysisRunAccepted(BaseModel):
     run_id: uuid.UUID
     draft_id: uuid.UUID
     status: str
+
+
+class ProjectSummary(BaseModel):
+    """Dashboard summary. `coverage_percentage` is computed once here so the
+    dashboard and any other consumer (export, future reporting) can never
+    disagree about what "coverage" means.
+    """
+
+    project_id: uuid.UUID
+    draft_id: uuid.UUID | None
+    references: ReferenceCounts
+    claims: ClaimCounts
+    accepted_citations: int
+    claims_with_accepted: int
+    coverage_percentage: float
+    latest_run: AnalysisRunStatus | None

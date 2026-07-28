@@ -47,3 +47,13 @@ class RecommendationRead(BaseModel):
 
 class DecisionRequest(BaseModel):
     note: str | None = None
+
+
+class SetDecisionRequest(BaseModel):
+    """Body for the unified /decision endpoint, which accepts any of the
+    three UserDecision outcomes the review UI can produce. accept/reject
+    remain as thin aliases hard-coding `decision` for backward compatibility.
+    """
+
+    decision: str  # one of UserDecision: ACCEPTED | REJECTED | IRRELEVANT
+    note: str | None = None
