@@ -9,7 +9,7 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Claim, CitationRecommendation, Draft, ReferencePaper
+from app.db.models import CitationRecommendation, Claim, Draft, ReferencePaper
 from app.db.models.enums import EnrichmentStatus
 from app.schemas.analysis import ClaimCounts, ReferenceCounts
 

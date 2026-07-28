@@ -26,8 +26,9 @@ def settings():
 @pytest.fixture(scope="session")
 def _migrated_db(settings) -> Iterator[None]:
     """Run Alembic once per session against the test database."""
-    from alembic import command
     from alembic.config import Config
+
+    from alembic import command
 
     cfg = Config("alembic.ini")
     cfg.set_main_option("sqlalchemy.url", settings.sync_db_url)
