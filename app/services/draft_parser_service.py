@@ -104,6 +104,56 @@ def normalize_paragraph(text: str) -> str:
     return text.strip()
 
 
+def normalize_with_map(raw: str) -> tuple[str, list[int]]:
+    """Like `normalize_paragraph`, but also returns the source index each
+    output character came from: `src[i]` is the position in `raw` that
+    produced `normalized[i]`.
+
+    This is what lets the export stage invert the normalization: a claim
+    offset lands in `raw_text` (normalized space), and this map is how it
+    finds its way back to a character position in the original docx
+    paragraph text (`raw` space) without ever persisting a mapping.
+
+    Must stay in exact lockstep with `normalize_paragraph` -- the two are
+    unit-tested against each other over every fixture paragraph.
+    """
+    out: list[str] = []
+    src: list[int] = []
+    pending_space_src: int | None = None
+
+    for i, ch in enumerate(raw):
+        if ch == "\r":
+            continue
+        if ch == "\xa0":
+            ch = " "
+        if ch in (" ", "\t"):
+            if pending_space_src is None:
+                pending_space_src = i
+            continue
+        if pending_space_src is not None:
+            out.append(" ")
+            src.append(pending_space_src)
+            pending_space_src = None
+        out.append(ch)
+        src.append(i)
+
+    if pending_space_src is not None:
+        out.append(" ")
+        src.append(pending_space_src)
+
+    # Python's str.strip() strips any whitespace, not just the space/tab
+    # runs collapsed above -- a bare newline at either edge (from a \r\n
+    # that lost its \r) must go too, matching normalize_paragraph exactly.
+    start = 0
+    while start < len(out) and out[start].isspace():
+        start += 1
+    end = len(out)
+    while end > start and out[end - 1].isspace():
+        end -= 1
+
+    return "".join(out[start:end]), src[start:end]
+
+
 def _assemble(raw_blocks: list[tuple[str, bool, str | None]]) -> ParsedDraft:
     """Build raw_text and block offsets in one pass.
 
@@ -144,31 +194,67 @@ def _assemble(raw_blocks: list[tuple[str, bool, str | None]]) -> ParsedDraft:
     return ParsedDraft(raw_text="".join(pieces), blocks=blocks)
 
 
-def parse_docx(path: Path) -> ParsedDraft:
-    from docx import Document
+def iter_docx_paragraphs(document) -> list:
+    """The exact paragraph walk that produced `raw_blocks` in `parse_docx`:
+    body paragraphs first, then every table cell's paragraphs, in document
+    order and depth-first per table.
+
+    Export replays this same walk to turn a block's `paragraph_index` back
+    into a python-docx `Paragraph` object. The two call sites living in one
+    function, in one module, is what keeps them from drifting apart — if
+    this walk ever changes, both the parser and the exporter change with it.
+
+    Two consequences worth knowing rather than "fixing": a horizontally
+    merged cell yields its paragraphs once per grid column it spans (both
+    sides duplicate identically, so indices still agree), and paragraphs
+    inside a nested table are not visited by either side.
+    """
     from docx.table import Table
-    from docx.text.paragraph import Paragraph
 
-    document = Document(str(path))
-    raw_blocks: list[tuple[str, bool, str | None]] = []
-
-    def paragraph_entry(paragraph: Paragraph) -> tuple[str, bool, str | None]:
-        style = (paragraph.style.name or "") if paragraph.style is not None else ""
-        is_heading = style.startswith("Heading") or style == "Title"
-        return paragraph.text, is_heading, None
-
-    for paragraph in document.paragraphs:
-        raw_blocks.append(paragraph_entry(paragraph))
-
-    # Table cells carry real prose in some drafts; including them keeps
-    # raw_text a faithful record of the document.
+    flat = list(document.paragraphs)
     for table in document.tables:
         if not isinstance(table, Table):
             continue
         for row in table.rows:
             for cell in row.cells:
-                for paragraph in cell.paragraphs:
-                    raw_blocks.append(paragraph_entry(paragraph))
+                flat.extend(cell.paragraphs)
+    return flat
+
+
+def _para_text(paragraph) -> str:
+    """The paragraph's text, exactly as `paragraph.text` would report it —
+    except that `paragraph.text` silently omits any run living inside a
+    `<w:ins>` (tracked-insert) element. A previously-exported document has
+    such runs, so validation must never read `.text` directly; this walks
+    `.//w:r` instead, which includes them.
+
+    `<w:del>` (tracked-delete) content is excluded: a deleted run's text
+    is not part of the paragraph as Word will show it once changes are
+    accepted, so it must not count towards offsets either.
+    """
+    from docx.oxml.ns import qn
+
+    parts = []
+    for run_el in paragraph._p.xpath(".//w:r[not(ancestor::w:del)]"):
+        for t in run_el.findall(qn("w:t")):
+            parts.append(t.text or "")
+        for _ in run_el.findall(qn("w:tab")):
+            parts.append("\t")
+        for _ in run_el.findall(qn("w:br")) + run_el.findall(qn("w:cr")):
+            parts.append("\n")
+    return "".join(parts)
+
+
+def parse_docx(path: Path) -> ParsedDraft:
+    from docx import Document
+
+    document = Document(str(path))
+    raw_blocks: list[tuple[str, bool, str | None]] = []
+
+    for paragraph in iter_docx_paragraphs(document):
+        style = (paragraph.style.name or "") if paragraph.style is not None else ""
+        is_heading = style.startswith("Heading") or style == "Title"
+        raw_blocks.append((paragraph.text, is_heading, None))
 
     return _assemble(raw_blocks)
 
