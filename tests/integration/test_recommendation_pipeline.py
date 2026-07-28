@@ -165,6 +165,29 @@ async def test_accept_and_reject_flow(client, analyzed, db_session):
     assert db_session.query(AcceptedCitation).count() == 0
 
 
+async def test_accept_populates_apa_citation_text(client, analyzed, db_session):
+    from app.db.models import AcceptedCitation
+
+    _, draft_id = analyzed
+    claims = await _claims(client, draft_id)
+
+    accepted_texts = []
+    for claim in claims[:2]:
+        recs = (await client.get(f"/api/v1/claims/{claim['id']}/recommendations")).json()
+        if not recs:
+            continue
+        resp = await client.post(f"/api/v1/recommendations/{recs[0]['id']}/accept", json={})
+        assert resp.status_code == 200
+
+    for row in db_session.query(AcceptedCitation).all():
+        assert row.citation_text is not None
+        assert row.citation_text.startswith("(")
+        assert row.insertion_format == "APA"
+        accepted_texts.append(row.citation_text)
+
+    assert accepted_texts  # the fixture always has at least one acceptable candidate
+
+
 async def test_recommendations_404_for_unknown_claim(client):
     import uuid
 

@@ -13,8 +13,37 @@ from app.schemas.recommendation import (
     ReferenceSummary,
     ScoreBreakdownOut,
 )
+from app.services.citation_formatting_service import build_citation_context
 
 router = APIRouter(tags=["recommendations"])
+
+
+async def _recompute_accepted_citation_texts(session, draft_id: uuid.UUID) -> None:
+    """Re-derive `citation_text` for every accepted citation in a draft.
+
+    Year-letter disambiguation ("2024a" vs "2024b") depends on the whole
+    accepted set, not on any one reference in isolation, so accepting or
+    rejecting a citation can change what an *already*-accepted sibling
+    should display. Recomputing the whole set keeps ghost text consistent
+    with what export will eventually write, at the cost of one extra query
+    per accept/reject -- cheap at review-screen scale.
+    """
+    rows = (
+        await session.execute(
+            select(AcceptedCitation, ReferencePaper)
+            .join(ReferencePaper, ReferencePaper.id == AcceptedCitation.reference_id)
+            .join(Claim, Claim.id == AcceptedCitation.claim_id)
+            .where(Claim.draft_id == draft_id)
+        )
+    ).all()
+    if not rows:
+        return
+
+    references = {ref.id: ref for _accepted, ref in rows}
+    context = build_citation_context(list(references.values()))
+    for accepted, ref in rows:
+        accepted.citation_text = context.in_text(ref.id)
+        accepted.insertion_format = "APA"
 
 
 def _serialize(
@@ -106,7 +135,9 @@ async def accept_recommendation(
                 recommendation_id=recommendation.id,
             )
         )
+        await session.flush()
 
+    await _recompute_accepted_citation_texts(session, recommendation.claim.draft_id)
     await session.commit()
     reference = await session.get(ReferencePaper, recommendation.reference_id)
     return _serialize(recommendation, reference)
@@ -132,7 +163,9 @@ async def reject_recommendation(
     ).scalar_one_or_none()
     if accepted is not None:
         await session.delete(accepted)
+        await session.flush()
 
+    await _recompute_accepted_citation_texts(session, recommendation.claim.draft_id)
     await session.commit()
     reference = await session.get(ReferencePaper, recommendation.reference_id)
     return _serialize(recommendation, reference)
