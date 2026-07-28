@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.api.deps import DraftDep, ProjectDep, SessionDep
 from app.core.config import get_settings
+from app.core.uploads import save_upload_capped
 from app.db.models import Draft
 from app.schemas.draft import DraftDetail, DraftRead
 
@@ -40,7 +41,7 @@ async def upload_draft(
     directory = get_settings().upload_dir / str(project.id) / "drafts"
     directory.mkdir(parents=True, exist_ok=True)
     storage_path = directory / f"{draft_id}{suffix}"
-    storage_path.write_bytes(await file.read())
+    await save_upload_capped(file, storage_path)
 
     draft = Draft(
         id=draft_id,

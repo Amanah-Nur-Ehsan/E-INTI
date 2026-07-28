@@ -50,6 +50,19 @@ The Postgres container publishes **port 5433** on the host, because 5432 is
 commonly already taken by a local PostgreSQL install. Adjust `docker-compose.yml`
 and `DATABASE_URL` together if you want a different port.
 
+Both Postgres and Redis are bound to `127.0.0.1` only — they are never reachable
+from outside the host, deployed or not. Redis additionally requires a password
+(`REDIS_PASSWORD`, default `devredispass` in `.env.example`); change it before any
+non-local deployment. `MAX_UPLOAD_MB` (default 25) caps draft and dataset uploads.
+`API_KEY` is an optional seam for a future auth layer — leave it empty for local
+dev; once set, every request must carry a matching `X-API-Key` header on routes
+that opt into `app.core.security.require_api_key`.
+
+There is **no per-user authentication or authorization yet** — every endpoint is
+open, and `projects` has no owner column. This is a deliberate MVP scope (the
+product spec explicitly excludes multi-user auth), not an oversight, but it means
+this API must not be exposed to untrusted networks as-is.
+
 ## Running
 
 ```bash

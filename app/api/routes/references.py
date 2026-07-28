@@ -2,6 +2,7 @@ from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
 
 from app.api.deps import ProjectDep, SessionDep
+from app.core.uploads import read_upload_capped
 from app.db.models import ReferencePaper
 from app.schemas.analysis import ReferenceCounts
 from app.schemas.reference import ImportResult, ReferenceRead
@@ -15,7 +16,7 @@ router = APIRouter(prefix="/projects/{project_id}/references", tags=["references
 async def import_references(
     project: ProjectDep, session: SessionDep, file: UploadFile = File(...)
 ) -> ImportResult:
-    content = await file.read()
+    content = await read_upload_capped(file)
 
     # The importer is sync (shared with worker code); run it on the sync engine.
     from app.db.session import get_sync_session_factory

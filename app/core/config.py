@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # Misc
     upload_dir: Path = Path("./uploads")
     celery_task_always_eager: bool = False
+    max_upload_mb: int = 25
+    cors_origins: list[str] = ["http://localhost:3000"]
+    api_key: str = ""  # empty = auth disabled (local dev)
 
     @field_validator("mock_llm", "mock_scopus", mode="before")
     @classmethod
