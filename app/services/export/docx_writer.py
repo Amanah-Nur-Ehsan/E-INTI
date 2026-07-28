@@ -63,6 +63,7 @@ def write_docx(
     mode: str = InsertionMode.TRACKED_CHANGES,
     author: str = TRACKED_CHANGE_AUTHOR,
     when: datetime | None = None,
+    include_audit_report: bool = False,
 ) -> tuple[bytes, list[InsertionOutcome]]:
     """Returns the revised document bytes plus a per-claim outcome list.
 
@@ -177,10 +178,50 @@ def write_docx(
     revision_counter = _append_bibliography(
         document, bundle, mode=mode, author=author, when=when, revision_counter=revision_counter
     )
+    if include_audit_report:
+        _append_audit_table(document, bundle)
 
     buffer = BytesIO()
     document.save(buffer)
     return buffer.getvalue(), outcomes
+
+
+def _append_audit_table(document, bundle: ExportBundle) -> None:
+    """A plain (non-tracked) table summarising every claim that needed a
+    citation -- section, category, existing-citation status, the chosen
+    reference's score and verdict, and the user's decision. This is a
+    report for the researcher, not manuscript content, so it is never
+    wrapped in <w:ins> regardless of insertion mode.
+    """
+    from app.services.export.audit import build_audit_rows
+
+    rows = build_audit_rows(bundle)
+    if not rows:
+        return
+
+    document.add_page_break()
+    document.add_heading("Citation Audit Report", level=1)
+
+    columns = [
+        ("Section", lambda r: r.section_title or ""),
+        ("Claim", lambda r: (r.claim_text or "")[:120]),
+        ("Type", lambda r: r.claim_type or ""),
+        ("Existing citation", lambda r: r.existing_citation_status),
+        ("Score", lambda r: f"{r.score_percentage:.1f}%" if r.score_percentage is not None else ""),
+        ("Verdict", lambda r: r.verdict or ""),
+        ("Decision", lambda r: r.user_decision),
+        ("Status", lambda r: r.insertion_status),
+    ]
+
+    table = document.add_table(rows=1, cols=len(columns))
+    table.style = "Table Grid"  # a built-in style present in every default template
+    for cell, (header, _getter) in zip(table.rows[0].cells, columns, strict=True):
+        cell.text = header
+
+    for row in rows:
+        cells = table.add_row().cells
+        for cell, (_header, getter) in zip(cells, columns, strict=True):
+            cell.text = str(getter(row))
 
 
 def _append_bibliography(

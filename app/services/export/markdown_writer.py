@@ -22,7 +22,9 @@ class MarkdownInsertionOutcome:
     citation_text: str | None
 
 
-def write_markdown(bundle: ExportBundle) -> tuple[str, list[MarkdownInsertionOutcome]]:
+def write_markdown(
+    bundle: ExportBundle, include_audit_report: bool = False
+) -> tuple[str, list[MarkdownInsertionOutcome]]:
     outcomes: list[MarkdownInsertionOutcome] = []
 
     items_by_paragraph: dict[int, list] = {}
@@ -87,4 +89,28 @@ def write_markdown(bundle: ExportBundle) -> tuple[str, list[MarkdownInsertionOut
         )
         body = f"{body}\n\n## References\n\n{entries}"
 
+    if include_audit_report:
+        body = f"{body}\n\n{_render_audit_table(bundle)}"
+
     return body, outcomes
+
+
+def _render_audit_table(bundle: ExportBundle) -> str:
+    from app.services.export.audit import build_audit_rows
+
+    rows = build_audit_rows(bundle)
+    if not rows:
+        return "## Citation Audit Report\n\n_No claims required a citation._"
+
+    header = "| Section | Claim | Type | Existing citation | Score | Verdict | Decision | Status |"
+    separator = "|---|---|---|---|---|---|---|---|"
+    lines = [header, separator]
+    for row in rows:
+        score = f"{row.score_percentage:.1f}%" if row.score_percentage is not None else ""
+        claim = (row.claim_text or "").replace("|", "\\|")[:120]
+        lines.append(
+            f"| {row.section_title or ''} | {claim} | {row.claim_type or ''} | "
+            f"{row.existing_citation_status} | {score} | {row.verdict or ''} | "
+            f"{row.user_decision} | {row.insertion_status} |"
+        )
+    return "## Citation Audit Report\n\n" + "\n".join(lines)

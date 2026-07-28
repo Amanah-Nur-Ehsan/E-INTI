@@ -148,7 +148,37 @@ GET    /api/v1/drafts/{id}/claims?needs_citation=true
 GET    /api/v1/claims/{id}/recommendations?limit=5
 POST   /api/v1/recommendations/{id}/accept
 POST   /api/v1/recommendations/{id}/reject
+POST   /api/v1/projects/{id}/exports                {format, citation_style, insertion_mode, include_audit_report}
+GET    /api/v1/projects/{id}/exports
+GET    /api/v1/exports/{id}/download
 ```
+
+### Export
+
+`format` is one of `docx`, `md`, `csv`, `json`. DOCX inserts accepted citations
+directly into the source paragraphs — by default as Word tracked changes
+(`insertion_mode: tracked_changes`, the reviewable default; `direct` writes
+plain text; `placeholder` writes `[CITATION: ...]` markers) — preserving run
+formatting via oxml manipulation rather than `paragraph.text = ...`, which
+would destroy it. A generated APA reference list is appended, and
+`include_audit_report` (default `true`) appends a table covering every claim
+that needed a citation: section, type, existing-citation status, score,
+verdict, decision, and status.
+
+Markdown export works for any draft format (.docx/.md/.txt) and is what a
+`.docx`-only feature falls back to; requesting `docx` for a non-`.docx` draft
+returns 422. CSV and JSON *are* the audit report rather than a document with
+one appended.
+
+If a claim's stored sentence no longer matches the live draft text (the file
+was edited outside the tool since analysis), that citation is skipped and
+reported as `POSITION_MISMATCH` in the response's `outcomes` and in the audit
+report — never guessed. The export response includes `inserted_count` and
+`mismatch_count` so the UI can warn before the user opens the file.
+
+Export runs synchronously (not a Celery job): generating even a long document
+takes tens of milliseconds, and queuing it behind a multi-minute analysis run
+would feel broken for no benefit.
 
 ## Dataset format
 

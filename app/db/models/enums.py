@@ -102,3 +102,10 @@ class RunStage(StrEnum):
     PARSING = "PARSING"
     DETECTING = "DETECTING"
     RECOMMENDING = "RECOMMENDING"
+
+
+class ExportFormat(StrEnum):
+    DOCX = "docx"
+    MD = "md"
+    CSV = "csv"
+    JSON = "json"
