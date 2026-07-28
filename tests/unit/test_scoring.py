@@ -117,6 +117,21 @@ def test_skipped_verification_redistributes_the_llm_weight():
     assert without_llm.llm_support_score is None
 
 
+@pytest.mark.parametrize("verdict", [Verdict.INSUFFICIENT_EVIDENCE, Verdict.SKIPPED])
+def test_unsupported_verdicts_never_read_as_recommended(verdict):
+    """High similarity must not present an unverified paper as citable."""
+    result = score(
+        verdict=verdict,
+        llm_support_score=SUPPORT_SCORE.get(verdict),
+        semantic_similarity=0.98,
+        lexical_similarity=0.95,
+        keyword_overlap=0.9,
+        reranker_score=0.97,
+    )
+    assert result.score_percentage >= 70
+    assert result.label not in (LABEL_STRONG, LABEL_RECOMMENDED)
+
+
 def test_score_stays_within_bounds():
     assert score(semantic_similarity=5.0).final_score <= 1.0
     assert score(semantic_similarity=-5.0, lexical_similarity=-1, keyword_overlap=-1,

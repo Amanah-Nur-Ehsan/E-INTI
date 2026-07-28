@@ -51,20 +51,38 @@ class ScoreBreakdown:
 
 
 def label_for(percentage: float, verdict: Verdict, has_abstract: bool) -> str:
+    """Map a percentage to a display band, with the verdict overriding it.
+
+    A high similarity score means the paper is *about* the same thing, which
+    is not the same as it being evidence for the claim. The ceilings below
+    keep the label honest when the verifier disagreed with the similarity.
+    """
     if not has_abstract:
         return LABEL_CANNOT_VERIFY
+
     if percentage >= 85:
-        # A topical match that isn't evidence must never read as "strong".
-        if verdict is Verdict.TOPICALLY_RELATED_BUT_NOT_EVIDENCE:
-            return LABEL_RECOMMENDED
-        return LABEL_STRONG
-    if percentage >= 70:
+        label = LABEL_STRONG
+    elif percentage >= 70:
+        label = LABEL_RECOMMENDED
+    elif percentage >= 50:
+        label = LABEL_POSSIBLE
+    elif percentage >= 30:
+        label = LABEL_WEAK
+    else:
+        label = LABEL_DO_NOT
+
+    if verdict is Verdict.TOPICALLY_RELATED_BUT_NOT_EVIDENCE and label == LABEL_STRONG:
+        # Spec: a topical match must never read as a strong recommendation.
         return LABEL_RECOMMENDED
-    if percentage >= 50:
+    if verdict in (Verdict.INSUFFICIENT_EVIDENCE, Verdict.SKIPPED) and label in (
+        LABEL_STRONG,
+        LABEL_RECOMMENDED,
+    ):
+        # The verifier found no support at all (or could not run). Presenting
+        # that as "Recommended" on the strength of topical similarity is the
+        # false-support failure the pipeline exists to prevent.
         return LABEL_POSSIBLE
-    if percentage >= 30:
-        return LABEL_WEAK
-    return LABEL_DO_NOT
+    return label
 
 
 def compute_score(
