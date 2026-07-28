@@ -91,6 +91,24 @@ Adding `GEMINI_API_KEY` is still worthwhile: if Groq rate-limits or returns
 unparseable JSON during verification, the request retries against Gemini instead of
 degrading those candidates to the `SKIPPED` verdict.
 
+### Scopus abstract entitlement
+
+A plain Elsevier developer key can read the Abstract Retrieval endpoint's *default*
+view only. The `FULL` and `META_ABS` views — the ones that carry abstracts, author
+lists, and keywords — return `AUTHORIZATION_ERROR` without an institutional
+subscription, which normally means being on the university network or holding an
+`ELSEVIER_INST_TOKEN` from your library.
+
+The client handles this rather than failing: it downgrades to the entitled view and
+keeps what that returns (title, year, source, EID, citation counts), then
+**Semantic Scholar supplies the abstract** through the fallback chain. Semantic
+Scholar needs no key and covers most recent literature, though not everything — a
+paper neither source can supply an abstract for stays `INCOMPLETE`, is excluded
+from retrieval, and is never proposed as evidence.
+
+If you can obtain an `ELSEVIER_INST_TOKEN`, set it: Scopus abstracts come with
+author and index keywords that improve the keyword-overlap component of the score.
+
 ## Verifying it works
 
 ```bash
