@@ -5,9 +5,9 @@ paper and a spreadsheet of Scopus-indexed candidate references; the system finds
 sentences that make citable claims and recommends references **from that uploaded
 dataset only**, each with a percentage score and an LLM-verified support verdict.
 
-This repository currently covers phases 1–4 of the plan: infrastructure, dataset
-import and enrichment, draft parsing and claim detection, and the recommendation
-engine. The frontend and the DOCX export with tracked changes are not built yet.
+This repository covers the full MVP: infrastructure, dataset import and enrichment,
+draft parsing and claim detection, the recommendation engine, DOCX export with
+tracked changes, and the Next.js review UI.
 
 ## How the pipeline works
 
@@ -75,6 +75,24 @@ GPU, so a containerised worker silently falls back to CPU and runs several times
 slower. It uses `--pool=solo` because forking a process that has already
 initialised MPS is crash-prone.
 
+```bash
+make web       # Next.js on http://localhost:3000, proxying /api/* to the backend
+```
+
+The frontend is a separate `npm` project in `frontend/` — no Docker container for
+it, since the API and worker already run on the host for MPS and a Node container
+would just add a container-to-host networking hop for nothing. Its typed API client
+is generated from the running backend's OpenAPI schema (`lib/api/schema.d.ts`,
+checked into git) via `make gen-api`; regenerate it whenever the API shape changes.
+
+The review screen renders the draft **read-only** — the user accepts or rejects
+suggestions, they never edit prose. A rich-text editor was deliberately not used:
+`char_start`/`char_end` offsets are not meaningful inside a ProseMirror/Lexical
+document model, and the moment the user could type, every stored offset would go
+stale and silently fail export's `POSITION_MISMATCH` check. Highlights and ghost
+text are computed by two pure functions (`lib/review/segments.ts`,
+`lib/review/highlight.ts`) over plain `raw_text` and the claim list instead.
+
 ## Working without API keys
 
 `USE_MOCK_PROVIDERS=true` (the default in `.env.example`) replaces Scopus and both
@@ -125,15 +143,22 @@ author and index keywords that improve the keyword-overlap component of the scor
 ## Verifying it works
 
 ```bash
-make test      # 133 tests, no network and no model downloads
+make test      # 255 backend tests, no network and no model downloads
 make smoke     # full pipeline on fixtures with the REAL SPECTER2 + cross-encoder
+```
+
+```bash
+cd frontend && npm test   # 22 tests for the pure review-screen logic
+cd frontend && npm run build
 ```
 
 `make test` substitutes deterministic fake vectors for the local models so CI stays
 fast and offline; absolute scores are therefore lower than production. `make smoke`
 is the check that the retrieval stack behaves on your machine — on the fixture data
 the planted supporting reference scores 93.4% SUPPORTED, and the planted
-contradicting reference is capped at 20%.
+contradicting reference is capped at 20%. The frontend tests cover `buildSegments`
+(the read-only draft renderer) and `highlightFor` (the six-colour priority logic) —
+the two pure functions the whole review screen rests on.
 
 ## API
 
@@ -217,12 +242,24 @@ embedding service loads the adapter and verifies it actually activated, because
 
 ```
 app/
-  api/routes/     projects, drafts, references, analysis, claims, recommendations
-  core/           config, device (MPS/CUDA/CPU), logging
+  api/routes/     projects, drafts, references, analysis, claims,
+                  recommendations, exports
+  core/           config, device (MPS/CUDA/CPU), logging, security, uploads
   db/             session (async for API, sync for workers), models
   services/       import, enrichment, embedding, retrieval, reranking,
-                  verification, scoring, recommendation pipeline, mocks
+                  verification, scoring, recommendation pipeline, mocks,
+                  citation_formatting_service, export/ (bundle, docx_ops,
+                  docx_writer, markdown_writer, tabular_writer, audit)
   workers/        celery app and the five pipeline stage tasks
 scripts/          make_fixtures.py, warmup_models.py, smoke_pipeline.py
 tests/            unit (no DB) and integration (compose test database)
+
+frontend/
+  app/            projects list; projects/[projectId]/{dashboard,setup,
+                  review,export} pages, all client components
+  components/     ui/ primitives, review/ (DraftPane, RecommendationCard,
+                  ScoreBreakdownDrawer)
+  lib/            api/ (generated schema + typed client + query hooks),
+                  review/ (segments.ts, highlight.ts — the pure logic
+                  the review screen is built on; both have Vitest suites)
 ```
