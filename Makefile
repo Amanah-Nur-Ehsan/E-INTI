@@ -1,4 +1,4 @@
-.PHONY: up down api worker models db-upgrade db-revision test test-unit smoke lint fixtures
+.PHONY: up down api worker models db-upgrade db-revision test test-unit smoke lint fixtures web gen-api
 
 up:
 	docker compose up -d postgres redis
@@ -39,3 +39,11 @@ lint:
 
 fixtures:
 	uv run python scripts/make_fixtures.py
+
+web:
+	cd frontend && npm run dev
+
+# Regenerate the typed API client from the running backend's OpenAPI schema.
+# Requires `make api` running in another terminal.
+gen-api:
+	cd frontend && npx openapi-typescript http://localhost:8000/openapi.json -o lib/api/schema.d.ts
