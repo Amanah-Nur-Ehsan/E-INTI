@@ -76,11 +76,20 @@ mocks. You can also mock one side only with `MOCK_LLM` / `MOCK_SCOPUS`.
 
 To get real keys:
 
-| Key | Where |
-|---|---|
-| `ELSEVIER_API_KEY` | https://dev.elsevier.com — register an app; institutional network or `ELSEVIER_INST_TOKEN` is needed for abstract entitlement |
-| `GROQ_API_KEY` | https://console.groq.com/keys |
-| `GEMINI_API_KEY` | https://aistudio.google.com/apikey |
+| Key | Required? | Where |
+|---|---|---|
+| `ELSEVIER_API_KEY` | for real enrichment | https://dev.elsevier.com — register an app; institutional network or `ELSEVIER_INST_TOKEN` is needed for abstract entitlement |
+| `GROQ_API_KEY` | **yes** | https://console.groq.com/keys |
+| `GEMINI_API_KEY` | optional | https://aistudio.google.com/apikey |
+
+**Only one LLM key is needed, and it must be Groq.** Groq serves both tiers:
+`llama-3.1-8b-instant` for claim classification and `llama-3.3-70b-versatile` for
+verification. Gemini 2.5 Flash is a fallback for the verification tier alone, so it
+cannot substitute for Groq — without a Groq key, claim detection has no classifier.
+
+Adding `GEMINI_API_KEY` is still worthwhile: if Groq rate-limits or returns
+unparseable JSON during verification, the request retries against Gemini instead of
+degrading those candidates to the `SKIPPED` verdict.
 
 ## Verifying it works
 

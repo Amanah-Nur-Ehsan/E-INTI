@@ -80,11 +80,11 @@ class Settings(BaseSettings):
         missing: list[str] = []
         if not self.scopus_mocked and not self.elsevier_api_key:
             missing.append("ELSEVIER_API_KEY")
-        if not self.llm_mocked:
-            if not self.groq_api_key:
-                missing.append("GROQ_API_KEY")
-            if not self.gemini_api_key:
-                missing.append("GEMINI_API_KEY")
+        # Groq serves both tiers, so it is the only mandatory LLM key. Gemini is
+        # a fallback for verification only; without it a Groq outage degrades
+        # candidates to the SKIPPED verdict rather than failing the run.
+        if not self.llm_mocked and not self.groq_api_key:
+            missing.append("GROQ_API_KEY")
         if missing:
             raise ValueError(
                 f"Real providers enabled but keys missing: {', '.join(missing)}. "
