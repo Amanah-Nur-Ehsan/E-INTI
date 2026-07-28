@@ -88,6 +88,72 @@ def test_strong_signal_survives_without_llm():
     assert {"consensus_phrase", "reporting_verb", "effect_verb", "statistic"} & set(result.signals)
 
 
+class _RenumberingClient:
+    """Stands in for a real model, which numbers its answers 0..n-1 regardless
+    of the numbering in the prompt. This is what Groq actually does.
+    """
+
+    def __init__(self, needs: list[bool]):
+        self.needs = needs
+        self.prompt = ""
+
+    def complete_structured(self, *, tier, system, user, schema):
+        self.prompt = user
+        return schema.model_validate(
+            {
+                "decisions": [
+                    {"idx": i, "needs_citation": need, "claim_type": "EMPIRICAL_RESULT"}
+                    for i, need in enumerate(self.needs)
+                ]
+            }
+        )
+
+
+def test_batch_indices_map_back_to_draft_sentences():
+    """A batch with gaps must not shift decisions onto skipped sentences."""
+    from app.services.claim_detection_service import classify_batch
+    from app.services.draft_parser_service import Sentence
+
+    def sentence(text: str) -> Sentence:
+        return Sentence(
+            text=text,
+            char_start=0,
+            char_end=len(text),
+            paragraph_index=0,
+            sentence_index=0,
+            section_title="Related Work",
+        )
+
+    # Draft sentences 0 and 2 were dropped by the prefilter, so the batch holds
+    # draft indices 1, 4 and 5 — but the model will answer 0, 1, 2.
+    batch = [
+        (1, sentence("Random forests reduce overfitting compared with single trees."), "ctx"),
+        (4, sentence("Boosted ensembles scale to very large training datasets."), "ctx"),
+        (5, sentence("We evaluate all models on the same held-out period."), "ctx"),
+    ]
+    client = _RenumberingClient([True, True, False])
+    decisions = classify_batch(client, batch, "A draft")
+
+    assert set(decisions) == {1, 4, 5}
+    assert decisions[1].needs_citation is True
+    assert decisions[4].needs_citation is True
+    assert decisions[5].needs_citation is False
+
+    # The prompt itself is numbered from zero, which is why the mapping holds.
+    assert '0. sentence: "Random forests' in client.prompt
+    assert '2. sentence: "We evaluate' in client.prompt
+
+
+def test_out_of_range_decision_indices_are_discarded():
+    from app.services.claim_detection_service import classify_batch
+    from app.services.draft_parser_service import Sentence
+
+    batch = [(3, Sentence("A claim sentence here.", 0, 22, 0, 0, "Intro"), "ctx")]
+    client = _RenumberingClient([True, True, True])  # three answers for one sentence
+    decisions = classify_batch(client, batch, "A draft")
+    assert set(decisions) == {3}
+
+
 def test_mock_tier1_alignment_preserves_indices():
     from app.services.claim_detection_service import ClaimBatchDecision
     from app.services.llm_client import Tier

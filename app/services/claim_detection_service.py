@@ -226,10 +226,16 @@ def _normalize_claim_type(value: str, needs_citation: bool) -> str:
 def classify_batch(
     client, batch: list[tuple[int, Sentence, str]], draft_title: str
 ) -> dict[int, ClaimDecision]:
-    """Classify one batch; returns {idx: decision}, empty on LLM failure."""
+    """Classify one batch; returns {sentence_index: decision}, empty on LLM failure.
+
+    The prompt numbers sentences 0..n-1 within the batch rather than by their
+    position in the draft: models renumber sequentially regardless of what they
+    are given, so batch-local numbering is the only mapping that survives a
+    batch with gaps (sentences the prefilter already excluded).
+    """
     numbered = "\n".join(
-        f'{idx}. sentence: "{sentence.text}"\n   context: "{context}"'
-        for idx, sentence, context in batch
+        f'{local}. sentence: "{sentence.text}"\n   context: "{context}"'
+        for local, (_, sentence, context) in enumerate(batch)
     )
     section = batch[0][1].section_title or "Unknown"
     user = CLASSIFY_USER_TEMPLATE.format(
@@ -250,7 +256,15 @@ def classify_batch(
         log.warning("claim_classification_failed", error=str(exc), batch=len(batch))
         return {}
 
-    return {d.idx: d for d in result.decisions}
+    # Translate batch-local indices back to draft sentence indices, dropping
+    # anything out of range rather than letting it land on the wrong sentence.
+    decisions: dict[int, ClaimDecision] = {}
+    for decision in result.decisions:
+        if 0 <= decision.idx < len(batch):
+            decisions[batch[decision.idx][0]] = decision
+        else:
+            log.warning("claim_decision_index_out_of_range", idx=decision.idx, batch=len(batch))
+    return decisions
 
 
 def claim_hash(text: str) -> str:

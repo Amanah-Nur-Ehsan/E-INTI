@@ -175,6 +175,8 @@ class ScopusService:
         self._client = client or httpx.Client(base_url=BASE_URL, headers=headers, timeout=30.0)
         self._last_request_at = 0.0
         self._disabled_reason: str | None = None
+        #: Downgraded to None (default view) if the key lacks FULL entitlement.
+        self._view: str | None = "FULL"
 
     def close(self) -> None:
         self._client.close()
@@ -209,14 +211,27 @@ class ScopusService:
     )
     def _get(self, path: str) -> dict | None:
         self._throttle()
-        response = self._client.get(path, params={"view": "FULL"})
+        params = {"view": self._view} if self._view else {}
+        response = self._client.get(path, params=params)
         self._last_request_at = time.monotonic()
 
         if response.status_code == 429:
             retry_after = response.headers.get("Retry-After")
             raise RateLimited(float(retry_after) if retry_after else None)
+
         if response.status_code in (401, 403):
-            raise ProviderAuthError(f"Scopus rejected credentials ({response.status_code})")
+            status = response.headers.get("X-ELS-Status", "")
+            # AUTHORIZATION_ERROR means the *view* is not entitled, not that the
+            # key is bad. Keys without an institutional subscription cannot read
+            # FULL/META_ABS, but the default view still returns identifiers and
+            # publication metadata worth keeping — the abstract then comes from
+            # Semantic Scholar further down the chain.
+            if "AUTHORIZATION_ERROR" in status and self._view is not None:
+                log.warning("scopus_view_not_entitled", view=self._view, downgrading_to="default")
+                self._view = None
+                return self._get(path)
+            raise ProviderAuthError(f"Scopus rejected credentials ({response.status_code} {status})")
+
         if response.status_code == 404:
             return None
         response.raise_for_status()

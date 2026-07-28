@@ -118,6 +118,68 @@ def test_retries_then_succeeds_after_rate_limit():
     assert calls["n"] == 2
 
 
+def test_unentitled_full_view_downgrades_instead_of_disabling():
+    """Keys without an institutional subscription still yield useful metadata."""
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        view = request.url.params.get("view")
+        seen.append(view or "default")
+        if view == "FULL":
+            return httpx.Response(
+                401,
+                headers={"X-ELS-Status": "AUTHORIZATION_ERROR - not authorized for this view"},
+                json={"service-error": {}},
+            )
+        return httpx.Response(
+            200,
+            json={
+                "abstracts-retrieval-response": {
+                    "coredata": {
+                        "dc:title": "A Paper",
+                        "prism:coverDate": "2021-01-01",
+                        "prism:publicationName": "A Journal",
+                    }
+                }
+            },
+        )
+
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler), base_url="https://api.elsevier.com"
+    )
+    service = ScopusService(client=client)
+
+    from app.services.enrichment_types import RefIdentity
+
+    result = service.fetch(RefIdentity(title="A Paper", doi="10.1016/x"))
+    assert result is not None
+    assert result.title == "A Paper"
+    assert result.year == 2021
+    # No abstract in the entitled view: the chain falls through to Semantic Scholar.
+    assert not result.has_abstract
+    assert service._disabled_reason is None
+    assert seen == ["FULL", "default"]
+
+    # The downgrade sticks, so later rows don't burn a request rediscovering it.
+    service.fetch(RefIdentity(title="Another", doi="10.1016/y"))
+    assert seen == ["FULL", "default", "default"]
+
+
+def test_invalid_key_still_disables_the_provider():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, headers={"X-ELS-Status": "APIKEY_INVALID"}, json={})
+
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler), base_url="https://api.elsevier.com"
+    )
+    service = ScopusService(client=client)
+
+    from app.services.enrichment_types import RefIdentity
+
+    assert service.fetch(RefIdentity(title="T", doi="10.1016/x")) is None
+    assert "APIKEY_INVALID" in service._disabled_reason
+
+
 def test_404_returns_none():
     client = httpx.Client(
         transport=httpx.MockTransport(lambda r: httpx.Response(404)),
