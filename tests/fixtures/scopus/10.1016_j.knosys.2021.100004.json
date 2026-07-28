@@ -1,0 +1,48 @@
+{
+  "abstracts-retrieval-response": {
+    "coredata": {
+      "dc:title": "Class Imbalance Strategies for Transaction Anomaly Detection",
+      "dc:description": "Fraudulent transactions represent a tiny fraction of payment traffic, which makes anomaly detectors prone to majority-class bias. We compare resampling, cost-sensitive learning, and synthetic minority oversampling, and report that cost-sensitive objectives give the most stable precision-recall trade-off in production settings.",
+      "prism:doi": "10.1016/j.knosys.2021.100004",
+      "prism:publicationName": "Knowledge-Based Systems",
+      "prism:coverDate": "2021-01-01",
+      "citedby-count": "14",
+      "subtypeDescription": "Article",
+      "eid": "2-s2.0-85100000004",
+      "dc:identifier": "SCOPUS_ID:85100000004"
+    },
+    "authors": {
+      "author": [
+        {
+          "@auid": "7004",
+          "ce:indexed-name": "Nakamura S."
+        },
+        {
+          "@auid": "7005",
+          "ce:surname": "Ito",
+          "ce:given-name": "Kenji"
+        }
+      ]
+    },
+    "authkeywords": {
+      "author-keyword": [
+        {
+          "$": "class imbalance"
+        },
+        {
+          "$": "anomaly detection"
+        },
+        {
+          "$": "SMOTE"
+        }
+      ]
+    },
+    "subject-areas": {
+      "subject-area": [
+        {
+          "$": "Computer Science"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "abstracts-retrieval-response": {
+    "coredata": {
+      "dc:title": "Evaluation Metrics for Highly Imbalanced Binary Classification",
+      "dc:description": "Accuracy is misleading when the positive class is rare. We formalise the relationship between precision-recall area and cost-weighted utility, and recommend reporting partial AUC at operationally relevant false positive rates.",
+      "prism:doi": "10.1016/j.patrec.2021.100009",
+      "prism:publicationName": "Pattern Recognition Letters",
+      "prism:coverDate": "2021-01-01",
+      "citedby-count": "19",
+      "subtypeDescription": "Article",
+      "eid": "2-s2.0-85100000009",
+      "dc:identifier": "SCOPUS_ID:85100000009"
+    },
+    "authors": {
+      "author": {
+        "@auid": "7009",
+        "ce:indexed-name": "Lindqvist K."
+      }
+    }
+  }
+}

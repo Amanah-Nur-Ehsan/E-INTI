@@ -11,10 +11,14 @@ assert specific outcomes:
 * ref 11 has a DOI containing "notfound" -> mock Scopus misses it, so it
   ends up INCOMPLETE and capped at 45%.
 * ref 12 has no identifier at all -> INCOMPLETE, exercises the warning path.
+* refs 4, 6 and 9 ship without abstracts and are filled in from the Scopus
+  payload fixtures below, each using a different awkward response shape
+  (coredata description, bibrecord paragraphs, single-element collapsing).
 
 Run with: make fixtures
 """
 
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -255,15 +259,141 @@ DRAFT_PARAGRAPHS = [
 ]
 
 
+#: Abstracts deliberately withheld from the spreadsheet so the enrichment
+#: stage has real work to do; keyed by the row's DOI.
+WITHHELD_ABSTRACTS = {
+    4: (
+        "Fraudulent transactions represent a tiny fraction of payment traffic, which makes "
+        "anomaly detectors prone to majority-class bias. We compare resampling, cost-sensitive "
+        "learning, and synthetic minority oversampling, and report that cost-sensitive "
+        "objectives give the most stable precision-recall trade-off in production settings."
+    ),
+    6: (
+        "Payment systems form dense transaction graphs whose structure carries signal about "
+        "coordinated abuse. We apply graph neural networks to inter-account transfer graphs "
+        "and detect collusive rings that node-level classifiers miss entirely."
+    ),
+    9: (
+        "Accuracy is misleading when the positive class is rare. We formalise the relationship "
+        "between precision-recall area and cost-weighted utility, and recommend reporting "
+        "partial AUC at operationally relevant false positive rates."
+    ),
+}
+
+
+def _coredata(row: dict, abstract: str | None) -> dict:
+    return {
+        "dc:title": row["DOCUMENT TITLE"],
+        "dc:description": abstract,
+        "prism:doi": row["LINK"].split("doi.org/")[-1] if "doi.org" in row["LINK"] else None,
+        "prism:publicationName": row["SOURCE TITLE"],
+        "prism:coverDate": f"{row['YEAR']}-01-01",
+        "citedby-count": str(10 + row["NO."]),
+        "subtypeDescription": "Article",
+        "eid": f"2-s2.0-8510000{row['NO.']:04d}",
+        "dc:identifier": f"SCOPUS_ID:8510000{row['NO.']:04d}",
+    }
+
+
+def scopus_payloads() -> dict[str, dict]:
+    """One payload per withheld-abstract row, each in a different shape."""
+    by_no = {r["NO."]: r for r in REFERENCES}
+    payloads: dict[str, dict] = {}
+
+    # Shape A: abstract in coredata, authors as a proper list, keywords as
+    # a list of {"$": ...} wrappers.
+    row = by_no[4]
+    payloads[row["LINK"].split("doi.org/")[-1]] = {
+        "abstracts-retrieval-response": {
+            "coredata": _coredata(row, WITHHELD_ABSTRACTS[4]),
+            "authors": {
+                "author": [
+                    {"@auid": "7004", "ce:indexed-name": "Nakamura S."},
+                    {"@auid": "7005", "ce:surname": "Ito", "ce:given-name": "Kenji"},
+                ]
+            },
+            "authkeywords": {
+                "author-keyword": [
+                    {"$": "class imbalance"},
+                    {"$": "anomaly detection"},
+                    {"$": "SMOTE"},
+                ]
+            },
+            "subject-areas": {"subject-area": [{"$": "Computer Science"}]},
+        }
+    }
+
+    # Shape B: no coredata description at all — abstract lives in the
+    # bibrecord as ce:para paragraphs.
+    row = by_no[6]
+    payloads[row["LINK"].split("doi.org/")[-1]] = {
+        "abstracts-retrieval-response": {
+            "coredata": _coredata(row, None),
+            "item": {
+                "bibrecord": {
+                    "head": {
+                        "abstracts": {
+                            "abstract": {
+                                "ce:para": [
+                                    {"$": WITHHELD_ABSTRACTS[6][:120]},
+                                    {"$": WITHHELD_ABSTRACTS[6][120:]},
+                                ]
+                            }
+                        }
+                    }
+                }
+            },
+            # Single author collapsed to a bare object rather than a list.
+            "authors": {"author": {"@auid": "7006", "ce:indexed-name": "Garcia P."}},
+            "authkeywords": {"author-keyword": {"$": "graph neural networks"}},
+        }
+    }
+
+    # Shape C: abstract as a plain string, keywords absent entirely.
+    row = by_no[9]
+    payloads[row["LINK"].split("doi.org/")[-1]] = {
+        "abstracts-retrieval-response": {
+            "coredata": _coredata(row, WITHHELD_ABSTRACTS[9]),
+            "authors": {"author": {"@auid": "7009", "ce:indexed-name": "Lindqvist K."}},
+        }
+    }
+
+    return payloads
+
+
+def write_scopus_payloads() -> list[Path]:
+    from app.services.mocks.mock_scopus import fixture_name
+
+    directory = FIXTURES / "scopus"
+    directory.mkdir(parents=True, exist_ok=True)
+    written = []
+    for identifier, payload in scopus_payloads().items():
+        path = directory / fixture_name(identifier)
+        path.write_text(json.dumps(payload, indent=2) + "\n")
+        written.append(path)
+    return written
+
+
+def dataset_rows() -> list[dict]:
+    """Spreadsheet view: withheld abstracts are blanked out."""
+    rows = []
+    for reference in REFERENCES:
+        row = dict(reference)
+        if row["NO."] in WITHHELD_ABSTRACTS:
+            row["ABSTRACT"] = ""
+        rows.append(row)
+    return rows
+
+
 def write_dataset() -> Path:
     path = FIXTURES / "sample_dataset.xlsx"
-    pd.DataFrame(REFERENCES).to_excel(path, index=False, engine="openpyxl")
+    pd.DataFrame(dataset_rows()).to_excel(path, index=False, engine="openpyxl")
     return path
 
 
 def write_dataset_csv() -> Path:
     path = FIXTURES / "sample_dataset.csv"
-    pd.DataFrame(REFERENCES).to_csv(path, index=False)
+    pd.DataFrame(dataset_rows()).to_csv(path, index=False)
     return path
 
 
@@ -296,7 +426,13 @@ def write_plain_drafts() -> list[Path]:
 
 def main() -> None:
     FIXTURES.mkdir(parents=True, exist_ok=True)
-    written = [write_dataset(), write_dataset_csv(), write_draft(), *write_plain_drafts()]
+    written = [
+        write_dataset(),
+        write_dataset_csv(),
+        write_draft(),
+        *write_plain_drafts(),
+        *write_scopus_payloads(),
+    ]
     for path in written:
         print(f"wrote {path.relative_to(FIXTURES.parent.parent)}")
 

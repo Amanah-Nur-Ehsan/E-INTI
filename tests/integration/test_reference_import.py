@@ -83,13 +83,17 @@ async def test_status_and_list_endpoints(client):
 
     status_body = (await client.get(f"/api/v1/projects/{project_id}/references/status")).json()
     assert status_body["total"] == 12
-    assert status_body["enriched"] == 10  # ten rows shipped with usable abstracts
-    assert status_body["pending"] == 2
+    # Seven rows ship with usable abstracts; the rest await enrichment.
+    assert status_body["enriched"] == 7
+    assert status_body["pending"] == 5
 
     listed = (
         await client.get(f"/api/v1/projects/{project_id}/references?enrichment_status=PENDING")
     ).json()
     assert {r["title"] for r in listed} == {
+        "Class Imbalance Strategies for Transaction Anomaly Detection",
+        "Graph Neural Networks for Payment Network Analysis",
+        "Evaluation Metrics for Highly Imbalanced Binary Classification",
         "An Unindexed Workshop Paper on Transaction Screening",
         "Internal Technical Note on Alert Triage",
     }

@@ -42,7 +42,8 @@ async def test_chain_runs_all_stages_to_completion(client, db_session):
     assert body["stage"] == RunStage.RECOMMENDING
     assert body["error"] is None
     assert body["references"]["total"] == 1
-    assert body["references"]["pending"] == 1
+    # The lone reference has no identifiers, so enrichment leaves it INCOMPLETE.
+    assert body["references"]["incomplete"] == 1
     assert body["claims"]["total"] == 0
 
 

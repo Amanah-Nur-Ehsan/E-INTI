@@ -1,0 +1,44 @@
+{
+  "abstracts-retrieval-response": {
+    "coredata": {
+      "dc:title": "Graph Neural Networks for Payment Network Analysis",
+      "dc:description": null,
+      "prism:doi": "10.1109/ACCESS.2020.100006",
+      "prism:publicationName": "IEEE Access",
+      "prism:coverDate": "2020-01-01",
+      "citedby-count": "16",
+      "subtypeDescription": "Article",
+      "eid": "2-s2.0-85100000006",
+      "dc:identifier": "SCOPUS_ID:85100000006"
+    },
+    "item": {
+      "bibrecord": {
+        "head": {
+          "abstracts": {
+            "abstract": {
+              "ce:para": [
+                {
+                  "$": "Payment systems form dense transaction graphs whose structure carries signal about coordinated abuse. We apply graph neu"
+                },
+                {
+                  "$": "ral networks to inter-account transfer graphs and detect collusive rings that node-level classifiers miss entirely."
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "authors": {
+      "author": {
+        "@auid": "7006",
+        "ce:indexed-name": "Garcia P."
+      }
+    },
+    "authkeywords": {
+      "author-keyword": {
+        "$": "graph neural networks"
+      }
+    }
+  }
+}
