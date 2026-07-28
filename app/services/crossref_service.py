@@ -19,6 +19,9 @@ BASE_URL = "https://api.crossref.org"
 
 class CrossrefService:
     name = "crossref"
+    #: Crossref never returns a usable abstract, so the enrichment stage only
+    #: consults it for references still missing basic bibliographic metadata.
+    supplies_abstracts = False
 
     def __init__(self, client: httpx.Client | None = None, mailto: str = "citationinti@example.org"):
         self._client = client or httpx.Client(

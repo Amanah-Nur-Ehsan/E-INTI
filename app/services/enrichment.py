@@ -25,6 +25,9 @@ from app.services.enrichment_types import (
 
 log = get_logger(__name__)
 
+#: Rows per transaction during enrichment.
+COMMIT_EVERY = 50
+
 
 def get_enrichment_chain() -> list[EnrichmentProviderClient]:
     settings = get_settings()
@@ -91,6 +94,12 @@ def enrich_reference(reference: ReferencePaper, chain: list[EnrichmentProviderCl
     providers_tried: list[str] = []
 
     for provider in chain:
+        if not getattr(provider, "supplies_abstracts", True) and reference.year and reference.source_title:
+            # This provider cannot contribute an abstract and the row already
+            # has the metadata it could offer. Skipping saves a request per row,
+            # which on a multi-thousand-row dataset is the difference between
+            # minutes and hours.
+            continue
         try:
             result = provider.fetch(identity)
         except Exception as exc:
@@ -144,7 +153,15 @@ def enrich_project_references(session: Session, project_id: uuid.UUID) -> dict:
 
     chain = get_enrichment_chain()
     counts = {"enriched": 0, "incomplete": 0, "failed": 0}
+    processed = 0
     try:
+        # Providers that can resolve many records per request do so up front.
+        identities = [_identity(r) for r in pending]
+        for provider in chain:
+            prefetch = getattr(provider, "prefetch", None)
+            if prefetch:
+                prefetch(identities)
+
         for reference in pending:
             try:
                 enrich_reference(reference, chain)
@@ -161,8 +178,13 @@ def enrich_project_references(session: Session, project_id: uuid.UUID) -> dict:
             else:
                 counts["failed"] += 1
 
-            # Commit per row so /analysis/status reflects live progress.
-            session.commit()
+            # Commit in batches: frequent enough that /analysis/status shows
+            # live progress, infrequent enough not to dominate the runtime.
+            processed += 1
+            if processed % COMMIT_EVERY == 0:
+                session.commit()
+                log.info("enrichment_progress", done=processed, total=len(pending), **counts)
+        session.commit()
     finally:
         for provider in chain:
             close = getattr(provider, "close", None)

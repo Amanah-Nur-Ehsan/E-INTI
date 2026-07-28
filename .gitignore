@@ -23,3 +23,8 @@ uploads/
 .DS_Store
 .idea/
 .vscode/
+
+# Local working data (user datasets and drafts)
+/data/
+/*.xlsx
+/*.docx

@@ -34,6 +34,9 @@ BASE_URL = "https://api.elsevier.com"
 MIN_SECONDS_BETWEEN_REQUESTS = 0.25
 #: When this few requests remain in the weekly quota, wait for the reset.
 RATE_LIMIT_FLOOR = 5
+#: After this many rows have come back metadata-only, stop querying Scopus for
+#: the rest of the run: the key clearly has no abstract entitlement.
+METADATA_ONLY_PROBE_ROWS = 3
 
 
 def _as_list(value: Any) -> list:
@@ -177,6 +180,7 @@ class ScopusService:
         self._disabled_reason: str | None = None
         #: Downgraded to None (default view) if the key lacks FULL entitlement.
         self._view: str | None = "FULL"
+        self._metadata_only_rows = 0
 
     def close(self) -> None:
         self._client.close()
@@ -242,6 +246,13 @@ class ScopusService:
         if self._disabled_reason:
             return None
 
+        if self._view is None and self._metadata_only_rows >= METADATA_ONLY_PROBE_ROWS:
+            # The key lacks entitlement for any view carrying abstracts, and
+            # abstracts are the point of this stage. The bibliographic fields
+            # the entitled view does return are already in the uploaded dataset,
+            # so querying every remaining row would cost minutes and add nothing.
+            return None
+
         attempts: list[str] = []
         if ref.scopus_eid:
             attempts.append(f"/content/abstract/eid/{ref.scopus_eid}")
@@ -261,5 +272,13 @@ class ScopusService:
                 log.warning("scopus_http_error", path=path, status=exc.response.status_code)
                 continue
             if payload:
-                return parse_abstract_response(payload)
+                result = parse_abstract_response(payload)
+                if not result.has_abstract and self._view is None:
+                    self._metadata_only_rows += 1
+                    if self._metadata_only_rows == METADATA_ONLY_PROBE_ROWS:
+                        log.warning(
+                            "scopus_metadata_only",
+                            reason="key has no abstract entitlement; skipping remaining rows",
+                        )
+                return result
         return None

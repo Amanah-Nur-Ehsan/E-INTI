@@ -81,18 +81,88 @@ def map_columns(headers: list[str]) -> dict[str, str]:
     return mapping
 
 
+#: How far down a sheet to look for the header row. Real exports often carry a
+#: title banner and blank spacer rows above the actual column names.
+MAX_HEADER_SCAN_ROWS = 12
+
+
+def _score_header_row(values: list) -> int:
+    """How many canonical fields this row's cells look like headers for."""
+    normalized = {normalize_header(v) for v in values if v is not None and str(v) != "nan"}
+    return sum(
+        1
+        for aliases in COLUMN_ALIASES.values()
+        if any(alias in normalized for alias in aliases)
+    )
+
+
+def find_header_row(raw: pd.DataFrame) -> int:
+    """Locate the header row, tolerating banner and spacer rows above it."""
+    best_row, best_score = 0, -1
+    for row in range(min(MAX_HEADER_SCAN_ROWS, len(raw))):
+        score = _score_header_row(raw.iloc[row].tolist())
+        if score > best_score:
+            best_row, best_score = row, score
+    return best_row
+
+
+def _read_sheet(content: bytes, sheet_name) -> pd.DataFrame:
+    raw = pd.read_excel(
+        io.BytesIO(content), sheet_name=sheet_name, engine="openpyxl", dtype=str, header=None
+    )
+    if raw.empty:
+        return pd.DataFrame()
+
+    header_row = find_header_row(raw)
+    frame = raw.iloc[header_row + 1 :].copy()
+    frame.columns = [str(c) for c in raw.iloc[header_row].tolist()]
+    frame["__sheet__"] = str(sheet_name)
+    return frame
+
+
 def read_table(content: bytes, filename: str) -> pd.DataFrame:
+    """Read a dataset into one frame.
+
+    Every sheet of a workbook is read and concatenated: reference lists are
+    routinely split by publication year across tabs, and the candidate pool is
+    meant to be the whole file.
+    """
     name = filename.lower()
     if name.endswith((".xlsx", ".xlsm", ".xls")):
-        return pd.read_excel(io.BytesIO(content), engine="openpyxl", dtype=str)
+        sheet_names = pd.ExcelFile(io.BytesIO(content), engine="openpyxl").sheet_names
+        frames = []
+        errors = []
+        for sheet_name in sheet_names:
+            frame = _read_sheet(content, sheet_name)
+            if frame.empty:
+                continue
+            try:
+                map_columns(list(frame.columns))
+            except DatasetSchemaError as exc:
+                errors.append(f"sheet '{sheet_name}': {exc}")
+                continue
+            frames.append(frame)
+        if not frames:
+            raise DatasetSchemaError(
+                "No sheet contained the required columns. " + " | ".join(errors)
+            )
+        return pd.concat(frames, ignore_index=True)
+
     if name.endswith((".csv", ".tsv", ".txt")):
         sep = "\t" if name.endswith(".tsv") else ","
         for encoding in ("utf-8-sig", "latin-1"):
             try:
-                return pd.read_csv(io.BytesIO(content), sep=sep, dtype=str, encoding=encoding)
+                raw = pd.read_csv(
+                    io.BytesIO(content), sep=sep, dtype=str, encoding=encoding, header=None
+                )
             except UnicodeDecodeError:
                 continue
+            header_row = find_header_row(raw)
+            frame = raw.iloc[header_row + 1 :].copy()
+            frame.columns = [str(c) for c in raw.iloc[header_row].tolist()]
+            return frame
         raise DatasetSchemaError("Could not decode CSV as UTF-8 or Latin-1")
+
     raise DatasetSchemaError(f"Unsupported dataset format: {filename}")
 
 
