@@ -62,23 +62,8 @@ async def test_enrichment_is_idempotent(client, db_session):
     assert second == {"enriched": 0, "incomplete": 0, "failed": 0}
 
 
-async def test_pipeline_stage_reports_enrichment_progress(client):
-    project_id = await _project_with_dataset(client)
-    # Give the run a draft to point at.
-    from app.db.models import Draft
-    from app.db.session import get_sync_session_factory
-
-    with get_sync_session_factory()() as session:
-        session.add(
-            Draft(
-                project_id=project_id,
-                original_filename="d.docx",
-                storage_path="/tmp/d.docx",
-                mime_type="application/octet-stream",
-            )
-        )
-        session.commit()
-
+async def test_pipeline_stage_reports_enrichment_progress(client, seeded_project):
+    project_id = seeded_project
     resp = await client.post(f"/api/v1/projects/{project_id}/analysis/run", json={})
     assert resp.status_code == 202
 

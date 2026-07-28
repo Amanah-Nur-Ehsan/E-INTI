@@ -65,6 +65,36 @@ async def client(clean_db) -> AsyncIterator:
         yield c
 
 
+async def create_project(client, name: str = "Test project", **fields) -> str:
+    payload = {"name": name, **fields}
+    return (await client.post("/api/v1/projects", json=payload)).json()["id"]
+
+
+async def upload_draft(client, project_id: str, filename: str = "sample_draft.docx") -> str:
+    data = (FIXTURES / filename).read_bytes()
+    resp = await client.post(
+        f"/api/v1/projects/{project_id}/drafts/upload", files={"file": (filename, data)}
+    )
+    return resp.json()["id"]
+
+
+async def import_dataset(client, project_id: str, filename: str = "sample_dataset.xlsx") -> dict:
+    data = (FIXTURES / filename).read_bytes()
+    resp = await client.post(
+        f"/api/v1/projects/{project_id}/references/import", files={"file": (filename, data)}
+    )
+    return resp.json()
+
+
+@pytest.fixture
+async def seeded_project(client) -> str:
+    """Project with the fixture draft uploaded and the fixture dataset imported."""
+    project_id = await create_project(client, "Fraud detection", field_of_study="Computer Science")
+    await upload_draft(client, project_id)
+    await import_dataset(client, project_id)
+    return project_id
+
+
 @pytest.fixture
 def db_session(clean_db) -> Iterator:
     """Sync session, matching what Celery worker code uses."""
