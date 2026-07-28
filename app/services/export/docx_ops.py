@@ -30,7 +30,7 @@ _TRAILING_PUNCTUATION = re.compile(r"[.?!…\"'”’]+$")
 #: Tracked-change revision ids start well above any id a real Word editing
 #: session is likely to have produced, so a document that already carries
 #: revisions never collides with ours.
-_REVISION_ID_BASE = 900_000
+REVISION_ID_BASE = 900_000
 
 
 @dataclass(frozen=True)
@@ -182,7 +182,7 @@ def wrap_tracked_insert(run_el, *, author: str, when: datetime | None, revision_
     to compute a valid anchor.
     """
     ins = OxmlElement("w:ins")
-    ins.set(qn("w:id"), str(_REVISION_ID_BASE + revision_id))
+    ins.set(qn("w:id"), str(REVISION_ID_BASE + revision_id))
     ins.set(qn("w:author"), author)
     ins.set(qn("w:date"), (when or datetime.now(UTC)).strftime("%Y-%m-%dT%H:%M:%SZ"))
     ins.append(run_el)
