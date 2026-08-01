@@ -17,7 +17,6 @@ from app.db.models import (
     CitationRecommendation,
     Claim,
     Draft,
-    Project,
     ReferencePaper,
 )
 from app.services.citation_formatting_service import CitationContext, build_citation_context
@@ -41,7 +40,6 @@ class AcceptedItem:
 
 @dataclass(frozen=True)
 class ExportBundle:
-    project: Project
     draft: Draft
     blocks: list[Block]
     accepted: list[AcceptedItem]  # ordered by claim.char_start
@@ -63,7 +61,6 @@ def build_bundle(session: Session, draft_id: uuid.UUID, style: str = "APA") -> E
     draft = session.get(Draft, draft_id)
     if draft is None:
         raise ValueError(f"Draft {draft_id} not found")
-    project = session.get(Project, draft.project_id)
 
     blocks = _rehydrate_blocks(draft)
 
@@ -113,7 +110,6 @@ def build_bundle(session: Session, draft_id: uuid.UUID, style: str = "APA") -> E
     accepted_items.sort(key=lambda item: item.claim.char_start or 0)
 
     return ExportBundle(
-        project=project,
         draft=draft,
         blocks=blocks,
         accepted=accepted_items,

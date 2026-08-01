@@ -11,7 +11,7 @@ from app.services.export.audit import INSERTED, NOT_ACCEPTED, build_audit_rows
 from app.services.export.bundle import build_bundle
 from app.services.export.markdown_writer import write_markdown
 from app.services.export.tabular_writer import write_csv, write_json
-from tests.conftest import create_project, import_dataset, upload_draft
+from tests.conftest import import_dataset, upload_draft
 
 pytestmark = pytest.mark.integration
 
@@ -20,13 +20,12 @@ async def _analyzed_draft(client, db_session, accept_all: bool = True):
     from app.services.embedding_service import embed_pending_references
     from app.services.enrichment import enrich_pending_references
 
-    project_id = await create_project(client, "P", field_of_study="Computer Science")
-    draft_id = await upload_draft(client, project_id)
-    await import_dataset(client, project_id)
+    draft_id = await upload_draft(client)
+    await import_dataset(client)
     enrich_pending_references(db_session)
     embed_pending_references(db_session)
     db_session.commit()
-    await client.post(f"/api/v1/projects/{project_id}/analysis/run", json={})
+    await client.post(f"/api/v1/drafts/{draft_id}/analysis/run")
 
     claims = (await client.get(f"/api/v1/drafts/{draft_id}/claims?needs_citation=true")).json()
     accepted = []
@@ -56,12 +55,11 @@ async def test_markdown_export_inserts_citations_and_bibliography(client, db_ses
 async def test_markdown_works_for_non_docx_drafts(client, db_session):
     """The whole point of the markdown export: it must work for .md/.txt
     drafts too, where DOCX export is unavailable."""
-    project_id = await create_project(client, "P", field_of_study="Computer Science")
     from tests.conftest import FIXTURES
 
     data = FIXTURES.joinpath("sample_draft.md").read_bytes()
     upload = await client.post(
-        f"/api/v1/projects/{project_id}/drafts/upload",
+        "/api/v1/drafts/upload",
         files={"file": ("sample_draft.md", data)},
     )
     draft_id = upload.json()["id"]

@@ -15,7 +15,7 @@ from celery import Task
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
-from app.db.models import AnalysisRun, Draft, Project
+from app.db.models import AnalysisRun, Draft
 from app.db.models.enums import RunStage, RunStatus
 from app.db.session import get_sync_session_factory
 
@@ -35,12 +35,7 @@ class RunContext:
         self.session = session
         self.run = run
         self.run_id = run.id
-        self.project_id = run.project_id
         self.draft_id = run.draft_id
-
-    @property
-    def project(self) -> Project:
-        return self.session.get(Project, self.project_id)
 
     @property
     def draft(self) -> Draft:

@@ -3,15 +3,14 @@ import pytest
 from app.db.models.enums import ClaimType, DetectionMethod, ExistingCitationStatus
 from app.services.claim_detection_service import detect_and_store_claims
 from app.services.draft_parser_service import parse_and_store_draft
-from tests.conftest import create_project, upload_draft
+from tests.conftest import upload_draft
 
 pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
 async def parsed_draft(client, db_session):
-    project_id = await create_project(client)
-    draft_id = await upload_draft(client, project_id)
+    draft_id = await upload_draft(client)
     parse_and_store_draft(db_session, draft_id)
     return draft_id
 

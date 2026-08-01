@@ -45,7 +45,6 @@ def write_json(bundle: ExportBundle, *, citation_style: str = "APA", insertion_m
     ]
 
     payload = {
-        "project": {"id": str(bundle.project.id), "name": bundle.project.name},
         "draft": {"id": str(bundle.draft.id), "filename": bundle.draft.original_filename},
         "generated_at": datetime.now(UTC).isoformat(),
         "citation_style": citation_style,

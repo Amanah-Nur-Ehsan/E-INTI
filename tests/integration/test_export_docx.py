@@ -23,15 +23,14 @@ async def _analyzed_draft(client, db_session):
     """
     from app.services.embedding_service import embed_pending_references
     from app.services.enrichment import enrich_pending_references
-    from tests.conftest import create_project, import_dataset, upload_draft
+    from tests.conftest import import_dataset, upload_draft
 
-    project_id = await create_project(client, "P", field_of_study="Computer Science")
-    draft_id = await upload_draft(client, project_id)
-    await import_dataset(client, project_id)
+    draft_id = await upload_draft(client)
+    await import_dataset(client)
     enrich_pending_references(db_session)
     embed_pending_references(db_session)
     db_session.commit()
-    await client.post(f"/api/v1/projects/{project_id}/analysis/run", json={})
+    await client.post(f"/api/v1/drafts/{draft_id}/analysis/run")
 
     claims = (await client.get(f"/api/v1/drafts/{draft_id}/claims?needs_citation=true")).json()
     accepted = []
@@ -219,12 +218,9 @@ def _run_is_italic(run_el) -> bool:
 
 
 async def test_docx_export_rejected_for_markdown_draft(client, db_session):
-    from tests.conftest import create_project
-
-    project_id = await create_project(client, "P")
     data = FIXTURES.joinpath("sample_draft.md").read_bytes()
     upload = await client.post(
-        f"/api/v1/projects/{project_id}/drafts/upload",
+        "/api/v1/drafts/upload",
         files={"file": ("sample_draft.md", data)},
     )
     draft_id = upload.json()["id"]
@@ -240,10 +236,9 @@ async def test_docx_export_rejected_for_markdown_draft(client, db_session):
 
 async def test_build_bundle_requires_parsed_draft(client, db_session):
     from app.services.export.bundle import DraftNotParsedError
-    from tests.conftest import create_project, upload_draft
+    from tests.conftest import upload_draft
 
-    project_id = await create_project(client, "P")
-    draft_id = await upload_draft(client, project_id)  # uploaded but never parsed
+    draft_id = await upload_draft(client)  # uploaded but never parsed
 
     with pytest.raises(DraftNotParsedError):
         build_bundle(db_session, uuid.UUID(draft_id))

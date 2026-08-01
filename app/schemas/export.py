@@ -8,7 +8,6 @@ from app.db.models.enums import ExportFormat, InsertionMode
 
 class ExportRequest(BaseModel):
     format: ExportFormat
-    draft_id: uuid.UUID | None = None  # defaults to the project's latest draft
     citation_style: str = "APA"
     insertion_mode: InsertionMode = InsertionMode.TRACKED_CHANGES
     include_audit_report: bool = True
@@ -25,7 +24,6 @@ class ExportRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    project_id: uuid.UUID
     draft_id: uuid.UUID
     format: str
     citation_style: str

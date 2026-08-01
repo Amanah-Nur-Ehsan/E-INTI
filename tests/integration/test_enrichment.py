@@ -6,7 +6,6 @@ from app.db.models.enums import EnrichmentProvider, EnrichmentStatus
 from app.services.enrichment import enrich_pending_references
 from tests.conftest import FIXTURES
 
-
 pytestmark = pytest.mark.integration
 
 
@@ -56,15 +55,14 @@ async def test_enrichment_is_idempotent(client, db_session):
     assert second == {"enriched": 0, "incomplete": 0, "failed": 0}
 
 
-async def test_pipeline_stage_reports_enrichment_progress(client, seeded_project):
-    project_id = seeded_project
-    resp = await client.post(f"/api/v1/projects/{project_id}/analysis/run", json={})
+async def test_pipeline_stage_reports_enrichment_progress(client, seeded_draft):
+    resp = await client.post(f"/api/v1/drafts/{seeded_draft}/analysis/run")
     assert resp.status_code == 202
 
-    status = (await client.get(f"/api/v1/projects/{project_id}/analysis/status")).json()
+    status = (await client.get(f"/api/v1/drafts/{seeded_draft}/analysis/status")).json()
     assert status["status"] == "COMPLETED"
     # 7 arrived with dataset abstracts, 3 more were fetched from Scopus --
-    # enrichment now happens on the library's own schedule (seeded_project
+    # enrichment now happens on the library's own schedule (seeded_draft
     # fixture does it up front), not as part of the per-draft analysis chain.
     assert status["references"]["enriched"] == 10
     assert status["references"]["incomplete"] == 2

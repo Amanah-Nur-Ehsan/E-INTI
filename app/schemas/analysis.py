@@ -4,11 +4,6 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
-class AnalysisRunRequest(BaseModel):
-    #: Defaults to the project's most recently uploaded draft.
-    draft_id: uuid.UUID | None = None
-
-
 class ReferenceCounts(BaseModel):
     total: int
     pending: int
@@ -42,14 +37,13 @@ class AnalysisRunAccepted(BaseModel):
     status: str
 
 
-class ProjectSummary(BaseModel):
+class DraftSummary(BaseModel):
     """Dashboard summary. `coverage_percentage` is computed once here so the
     dashboard and any other consumer (export, future reporting) can never
     disagree about what "coverage" means.
     """
 
-    project_id: uuid.UUID
-    draft_id: uuid.UUID | None
+    draft_id: uuid.UUID
     references: ReferenceCounts
     claims: ClaimCounts
     accepted_citations: int

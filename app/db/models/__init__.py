@@ -8,7 +8,6 @@ from app.db.models.citation import (
 from app.db.models.claim import Claim
 from app.db.models.draft import Draft
 from app.db.models.export import Export
-from app.db.models.project import Project
 from app.db.models.reference_paper import ReferencePaper
 
 __all__ = [
@@ -20,6 +19,5 @@ __all__ = [
     "Export",
     "LLMClassificationCache",
     "LLMVerificationCache",
-    "Project",
     "ReferencePaper",
 ]

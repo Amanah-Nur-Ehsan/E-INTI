@@ -9,7 +9,7 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import AcceptedCitation, CitationRecommendation, Claim, Draft, ReferencePaper
+from app.db.models import AcceptedCitation, CitationRecommendation, Claim, ReferencePaper
 from app.db.models.enums import EnrichmentStatus
 from app.schemas.analysis import ClaimCounts, ReferenceCounts
 
@@ -90,14 +90,3 @@ async def accepted_citation_counts(session: AsyncSession, draft_id: uuid.UUID) -
         )
     ).scalar_one()
     return total, distinct_claims
-
-
-async def latest_draft_id(session: AsyncSession, project_id: uuid.UUID) -> uuid.UUID | None:
-    return (
-        await session.execute(
-            select(Draft.id)
-            .where(Draft.project_id == project_id)
-            .order_by(Draft.created_at.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()

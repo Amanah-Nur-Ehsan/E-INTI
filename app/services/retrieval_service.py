@@ -2,7 +2,7 @@
 
 Recall matters more than precision here — the cross-encoder and the
 verifier downstream do the pruning. The BM25 corpus is built once per
-project per run rather than per claim.
+run rather than per claim.
 """
 
 import re

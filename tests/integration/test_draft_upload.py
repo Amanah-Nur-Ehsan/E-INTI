@@ -8,17 +8,16 @@ from tests.conftest import FIXTURES
 pytestmark = pytest.mark.integration
 
 
-async def upload_draft(client, project_id, filename="sample_draft.docx"):
+async def upload_draft(client, filename="sample_draft.docx"):
     data = (FIXTURES / filename).read_bytes()
     return await client.post(
-        f"/api/v1/projects/{project_id}/drafts/upload",
+        "/api/v1/drafts/upload",
         files={"file": (filename, data)},
     )
 
 
 async def test_upload_stores_file_and_metadata(client, db_session):
-    project_id = (await client.post("/api/v1/projects", json={"name": "P"})).json()["id"]
-    resp = await upload_draft(client, project_id)
+    resp = await upload_draft(client)
     assert resp.status_code == 201
 
     body = resp.json()
@@ -32,9 +31,8 @@ async def test_upload_stores_file_and_metadata(client, db_session):
 
 
 async def test_upload_rejects_pdf(client):
-    project_id = (await client.post("/api/v1/projects", json={"name": "P"})).json()["id"]
     resp = await client.post(
-        f"/api/v1/projects/{project_id}/drafts/upload",
+        "/api/v1/drafts/upload",
         files={"file": ("paper.pdf", b"%PDF-1.4")},
     )
     assert resp.status_code == 422
@@ -42,8 +40,7 @@ async def test_upload_rejects_pdf(client):
 
 
 async def test_parse_stage_persists_text_and_sentences(client, db_session):
-    project_id = (await client.post("/api/v1/projects", json={"name": "P"})).json()["id"]
-    draft_id = (await upload_draft(client, project_id)).json()["id"]
+    draft_id = (await upload_draft(client)).json()["id"]
 
     summary = parse_and_store_draft(db_session, draft_id)
     assert summary["blocks"] > 0
@@ -62,8 +59,7 @@ async def test_parse_stage_persists_text_and_sentences(client, db_session):
 
 
 async def test_parse_failure_is_recorded_on_the_draft(client, db_session, tmp_path):
-    project_id = (await client.post("/api/v1/projects", json={"name": "P"})).json()["id"]
-    draft_id = (await upload_draft(client, project_id)).json()["id"]
+    draft_id = (await upload_draft(client)).json()["id"]
 
     draft = db_session.get(Draft, draft_id)
     corrupt = tmp_path / "broken.docx"

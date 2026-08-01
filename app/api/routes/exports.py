@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 
-from app.api.deps import ProjectDep, SessionDep
+from app.api.deps import DraftDep, SessionDep
 from app.db.models import Export
 from app.schemas.export import ExportRead, ExportRequest
 from app.services.export import UnsupportedExportError, run_export
@@ -21,9 +21,9 @@ _CONTENT_TYPES = {
 
 
 @router.post(
-    "/projects/{project_id}/exports", response_model=ExportRead, status_code=status.HTTP_201_CREATED
+    "/drafts/{draft_id}/exports", response_model=ExportRead, status_code=status.HTTP_201_CREATED
 )
-async def create_export(project: ProjectDep, payload: ExportRequest, session: SessionDep) -> Export:
+async def create_export(draft: DraftDep, payload: ExportRequest, session: SessionDep) -> Export:
     # The generator (python-docx et al.) is sync and blocking; run it in the
     # threadpool FastAPI already provides for sync dependencies/routes rather
     # than blocking the event loop. The DB write also uses the sync engine,
@@ -34,9 +34,8 @@ async def create_export(project: ProjectDep, payload: ExportRequest, session: Se
         with get_sync_session_factory()() as sync_session:
             return run_export(
                 sync_session,
-                project.id,
+                draft.id,
                 format=payload.format,
-                draft_id=payload.draft_id,
                 citation_style=payload.citation_style,
                 insertion_mode=payload.insertion_mode,
                 include_audit_report=payload.include_audit_report,
@@ -51,14 +50,14 @@ async def create_export(project: ProjectDep, payload: ExportRequest, session: Se
     except UnsupportedExportError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     except ValueError as exc:
-        # DOCX export requested for a non-.docx draft, or no draft uploaded.
+        # DOCX export requested for a non-.docx draft.
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
 
 
-@router.get("/projects/{project_id}/exports", response_model=list[ExportRead])
-async def list_exports(project: ProjectDep, session: SessionDep) -> list[Export]:
+@router.get("/drafts/{draft_id}/exports", response_model=list[ExportRead])
+async def list_exports(draft: DraftDep, session: SessionDep) -> list[Export]:
     result = await session.execute(
-        select(Export).where(Export.project_id == project.id).order_by(Export.created_at.desc())
+        select(Export).where(Export.draft_id == draft.id).order_by(Export.created_at.desc())
     )
     return list(result.scalars())
 

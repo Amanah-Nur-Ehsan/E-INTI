@@ -8,7 +8,6 @@ class DraftRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    project_id: uuid.UUID
     original_filename: str
     mime_type: str
     parse_status: str

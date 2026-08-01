@@ -1,9 +1,7 @@
-import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Text
+from sqlalchemy import DateTime, Text
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKey
@@ -13,9 +11,6 @@ from app.db.models.enums import ParseStatus
 class Draft(UUIDPrimaryKey, TimestampMixin, Base):
     __tablename__ = "drafts"
 
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
-    )
     original_filename: Mapped[str] = mapped_column(Text, nullable=False)
     storage_path: Mapped[str] = mapped_column(Text, nullable=False)
     mime_type: Mapped[str] = mapped_column(Text, nullable=False)
@@ -32,7 +27,6 @@ class Draft(UUIDPrimaryKey, TimestampMixin, Base):
     parse_error: Mapped[str | None] = mapped_column(Text)
     parsed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    project: Mapped["Project"] = relationship(back_populates="drafts")  # noqa: F821
     claims: Mapped[list["Claim"]] = relationship(  # noqa: F821
         back_populates="draft", cascade="all, delete-orphan"
     )

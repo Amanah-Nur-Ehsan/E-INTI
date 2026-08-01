@@ -11,13 +11,13 @@ OPENING_CLAIM = "Machine learning techniques have improved the ability to identi
 
 
 @pytest.fixture
-async def analyzed(client, seeded_project):
-    """Run the whole pipeline end to end on the fixture project."""
-    resp = await client.post(f"/api/v1/projects/{seeded_project}/analysis/run", json={})
+async def analyzed(client, seeded_draft):
+    """Run the whole pipeline end to end on the fixture draft."""
+    resp = await client.post(f"/api/v1/drafts/{seeded_draft}/analysis/run")
     assert resp.status_code == 202, resp.text
-    status = (await client.get(f"/api/v1/projects/{seeded_project}/analysis/status")).json()
+    status = (await client.get(f"/api/v1/drafts/{seeded_draft}/analysis/status")).json()
     assert status["status"] == "COMPLETED", status
-    return seeded_project, status["draft_id"]
+    return seeded_draft
 
 
 async def _claims(client, draft_id):
@@ -25,15 +25,15 @@ async def _claims(client, draft_id):
 
 
 async def test_pipeline_completes_and_produces_recommendations(client, analyzed):
-    project_id, draft_id = analyzed
-    status = (await client.get(f"/api/v1/projects/{project_id}/analysis/status")).json()
+    draft_id = analyzed
+    status = (await client.get(f"/api/v1/drafts/{draft_id}/analysis/status")).json()
     assert status["claims"]["needs_citation"] > 0
     assert status["claims"]["with_recommendations"] > 0
 
 
 async def test_planted_supporting_reference_ranks_first(client, analyzed):
     """The fixture claim restates ref 1's abstract almost verbatim."""
-    _, draft_id = analyzed
+    draft_id = analyzed
     claims = await _claims(client, draft_id)
     claim = next(c for c in claims if c["sentence_text"].startswith(OPENING_CLAIM))
 
@@ -55,7 +55,7 @@ async def test_planted_supporting_reference_ranks_first(client, analyzed):
 
 
 async def test_contradicting_reference_is_capped(client, analyzed):
-    _, draft_id = analyzed
+    draft_id = analyzed
     claims = await _claims(client, draft_id)
     claim = next(c for c in claims if c["sentence_text"].startswith(OPENING_CLAIM))
     recs = (await client.get(f"/api/v1/claims/{claim['id']}/recommendations?limit=20")).json()
@@ -69,7 +69,7 @@ async def test_contradicting_reference_is_capped(client, analyzed):
 
 
 async def test_no_more_than_five_recommendations_per_claim(client, analyzed):
-    _, draft_id = analyzed
+    draft_id = analyzed
     for claim in await _claims(client, draft_id):
         recs = (await client.get(f"/api/v1/claims/{claim['id']}/recommendations?limit=20")).json()
         assert len(recs) <= 5
@@ -78,7 +78,7 @@ async def test_no_more_than_five_recommendations_per_claim(client, analyzed):
 
 async def test_references_without_abstracts_are_never_recommended(client, analyzed):
     """Unembedded rows cannot be retrieved, so they cannot be proposed as evidence."""
-    _, draft_id = analyzed
+    draft_id = analyzed
     unverifiable = {
         "An Unindexed Workshop Paper on Transaction Screening",
         "Internal Technical Note on Alert Triage",
@@ -92,7 +92,7 @@ async def test_references_without_abstracts_are_never_recommended(client, analyz
 
 
 async def test_score_breakdown_is_exposed(client, analyzed):
-    _, draft_id = analyzed
+    draft_id = analyzed
     claim = (await _claims(client, draft_id))[0]
     rec = (await client.get(f"/api/v1/claims/{claim['id']}/recommendations")).json()[0]
 
@@ -116,7 +116,7 @@ async def test_verification_results_are_cached_across_runs(client, analyzed, db_
     from app.db.models import AnalysisRun, LLMVerificationCache
     from app.db.models.enums import RunStatus
 
-    project_id, _ = analyzed
+    draft_id = analyzed
     cached_before = db_session.execute(
         select(func.count()).select_from(LLMVerificationCache)
     ).scalar_one()
@@ -130,7 +130,7 @@ async def test_verification_results_are_cached_across_runs(client, analyzed, db_
     from app.services.mocks.mock_llm import MockLLMClient
 
     calls_before = MockLLMClient().calls[Tier.VERIFY]
-    resp = await client.post(f"/api/v1/projects/{project_id}/analysis/run", json={})
+    resp = await client.post(f"/api/v1/drafts/{draft_id}/analysis/run")
     assert resp.status_code == 202
 
     cached_after = db_session.execute(
@@ -144,7 +144,7 @@ async def test_verification_results_are_cached_across_runs(client, analyzed, db_
 async def test_accept_and_reject_flow(client, analyzed, db_session):
     from app.db.models import AcceptedCitation
 
-    _, draft_id = analyzed
+    draft_id = analyzed
     claim = (await _claims(client, draft_id))[0]
     rec = (await client.get(f"/api/v1/claims/{claim['id']}/recommendations")).json()[0]
 
@@ -168,7 +168,7 @@ async def test_accept_and_reject_flow(client, analyzed, db_session):
 async def test_accept_populates_apa_citation_text(client, analyzed, db_session):
     from app.db.models import AcceptedCitation
 
-    _, draft_id = analyzed
+    draft_id = analyzed
     claims = await _claims(client, draft_id)
 
     accepted_texts = []

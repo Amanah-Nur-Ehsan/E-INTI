@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import Draft, Export
+from app.db.models import Export
 from app.db.models.enums import ExportFormat
 from app.services.export.bundle import build_bundle
 from app.services.export.docx_writer import write_docx
@@ -100,35 +100,18 @@ def _generate(
     raise UnsupportedExportError(f"Unknown export format: {format!r}")
 
 
-def _resolve_draft_id(session: Session, project_id: uuid.UUID, draft_id: uuid.UUID | None) -> uuid.UUID:
-    if draft_id is not None:
-        return draft_id
-    latest = (
-        session.query(Draft)
-        .filter(Draft.project_id == project_id)
-        .order_by(Draft.created_at.desc())
-        .first()
-    )
-    if latest is None:
-        raise ValueError(f"Project {project_id} has no uploaded draft")
-    return latest.id
-
-
 def run_export(
     session: Session,
-    project_id: uuid.UUID,
+    draft_id: uuid.UUID,
     *,
     format: str,
-    draft_id: uuid.UUID | None = None,
     citation_style: str = "APA",
     insertion_mode: str = "tracked_changes",
     include_audit_report: bool = True,
 ) -> Export:
-    resolved_draft_id = _resolve_draft_id(session, project_id, draft_id)
-
     generated = _generate(
         session,
-        resolved_draft_id,
+        draft_id,
         format=format,
         citation_style=citation_style,
         insertion_mode=insertion_mode,
@@ -136,7 +119,7 @@ def run_export(
     )
 
     export_id = uuid.uuid4()
-    directory = get_settings().upload_dir / str(project_id) / "exports"
+    directory = get_settings().upload_dir / "exports" / str(export_id)
     directory.mkdir(parents=True, exist_ok=True)
     filename = f"export_{export_id}.{generated.extension}"
     storage_path = directory / filename
@@ -144,8 +127,7 @@ def run_export(
 
     export = Export(
         id=export_id,
-        project_id=project_id,
-        draft_id=resolved_draft_id,
+        draft_id=draft_id,
         format=format,
         citation_style=citation_style,
         insertion_mode=insertion_mode,

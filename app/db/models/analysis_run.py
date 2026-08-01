@@ -18,9 +18,6 @@ class AnalysisRun(UUIDPrimaryKey, TimestampMixin, Base):
 
     __tablename__ = "analysis_runs"
 
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
-    )
     draft_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("drafts.id", ondelete="CASCADE"), nullable=False
     )
