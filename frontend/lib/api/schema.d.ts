@@ -4,44 +4,7 @@
  */
 
 export interface paths {
-    "/api/v1/projects": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Projects */
-        get: operations["list_projects_api_v1_projects_get"];
-        put?: never;
-        /** Create Project */
-        post: operations["create_project_api_v1_projects_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{project_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Project */
-        get: operations["get_project_api_v1_projects__project_id__get"];
-        put?: never;
-        post?: never;
-        /** Delete Project */
-        delete: operations["delete_project_api_v1_projects__project_id__delete"];
-        options?: never;
-        head?: never;
-        /** Update Project */
-        patch: operations["update_project_api_v1_projects__project_id__patch"];
-        trace?: never;
-    };
-    "/api/v1/projects/{project_id}/drafts/upload": {
+    "/api/v1/drafts/upload": {
         parameters: {
             query?: never;
             header?: never;
@@ -51,14 +14,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Upload Draft */
-        post: operations["upload_draft_api_v1_projects__project_id__drafts_upload_post"];
+        post: operations["upload_draft_api_v1_drafts_upload_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/projects/{project_id}/drafts": {
+    "/api/v1/drafts": {
         parameters: {
             query?: never;
             header?: never;
@@ -66,7 +29,7 @@ export interface paths {
             cookie?: never;
         };
         /** List Drafts */
-        get: operations["list_drafts_api_v1_projects__project_id__drafts_get"];
+        get: operations["list_drafts_api_v1_drafts_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -92,7 +55,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/projects/{project_id}/references/import": {
+    "/api/v1/library/import": {
         parameters: {
             query?: never;
             header?: never;
@@ -102,14 +65,37 @@ export interface paths {
         get?: never;
         put?: never;
         /** Import References */
-        post: operations["import_references_api_v1_projects__project_id__references_import_post"];
+        post: operations["import_references_api_v1_library_import_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/projects/{project_id}/references/status": {
+    "/api/v1/library/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Library
+         * @description Kick off enrichment-then-embedding for every pending library row.
+         *
+         *     Not tied to an AnalysisRun -- the library is maintained on its own
+         *     schedule, separate from any particular draft's analysis.
+         */
+        post: operations["refresh_library_api_v1_library_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/status": {
         parameters: {
             query?: never;
             header?: never;
@@ -117,7 +103,7 @@ export interface paths {
             cookie?: never;
         };
         /** References Status */
-        get: operations["references_status_api_v1_projects__project_id__references_status_get"];
+        get: operations["references_status_api_v1_library_status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -126,7 +112,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/projects/{project_id}/references": {
+    "/api/v1/library": {
         parameters: {
             query?: never;
             header?: never;
@@ -134,7 +120,7 @@ export interface paths {
             cookie?: never;
         };
         /** List References */
-        get: operations["list_references_api_v1_projects__project_id__references_get"];
+        get: operations["list_references_api_v1_library_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -143,7 +129,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/projects/{project_id}/analysis/run": {
+    "/api/v1/drafts/{draft_id}/analysis/run": {
         parameters: {
             query?: never;
             header?: never;
@@ -153,14 +139,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Run Analysis */
-        post: operations["run_analysis_api_v1_projects__project_id__analysis_run_post"];
+        post: operations["run_analysis_api_v1_drafts__draft_id__analysis_run_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/projects/{project_id}/analysis/status": {
+    "/api/v1/drafts/{draft_id}/analysis/status": {
         parameters: {
             query?: never;
             header?: never;
@@ -168,7 +154,7 @@ export interface paths {
             cookie?: never;
         };
         /** Analysis Status */
-        get: operations["analysis_status_api_v1_projects__project_id__analysis_status_get"];
+        get: operations["analysis_status_api_v1_drafts__draft_id__analysis_status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -177,7 +163,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/projects/{project_id}/summary": {
+    "/api/v1/drafts/{draft_id}/summary": {
         parameters: {
             query?: never;
             header?: never;
@@ -185,11 +171,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Project Summary
+         * Draft Summary
          * @description Dashboard data in one call: reference/claim counts, acceptance
          *     coverage, and the latest analysis run's status (if any has run yet).
          */
-        get: operations["project_summary_api_v1_projects__project_id__summary_get"];
+        get: operations["draft_summary_api_v1_drafts__draft_id__summary_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -328,7 +314,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/projects/{project_id}/exports": {
+    "/api/v1/drafts/{draft_id}/exports": {
         parameters: {
             query?: never;
             header?: never;
@@ -336,10 +322,10 @@ export interface paths {
             cookie?: never;
         };
         /** List Exports */
-        get: operations["list_exports_api_v1_projects__project_id__exports_get"];
+        get: operations["list_exports_api_v1_drafts__draft_id__exports_get"];
         put?: never;
         /** Create Export */
-        post: operations["create_export_api_v1_projects__project_id__exports_post"];
+        post: operations["create_export_api_v1_drafts__draft_id__exports_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -399,11 +385,6 @@ export interface components {
             /** Status */
             status: string;
         };
-        /** AnalysisRunRequest */
-        AnalysisRunRequest: {
-            /** Draft Id */
-            draft_id?: string | null;
-        };
         /** AnalysisRunStatus */
         AnalysisRunStatus: {
             /**
@@ -429,13 +410,13 @@ export interface components {
             references: components["schemas"]["ReferenceCounts"];
             claims: components["schemas"]["ClaimCounts"];
         };
-        /** Body_import_references_api_v1_projects__project_id__references_import_post */
-        Body_import_references_api_v1_projects__project_id__references_import_post: {
+        /** Body_import_references_api_v1_library_import_post */
+        Body_import_references_api_v1_library_import_post: {
             /** File */
             file: string;
         };
-        /** Body_upload_draft_api_v1_projects__project_id__drafts_upload_post */
-        Body_upload_draft_api_v1_projects__project_id__drafts_upload_post: {
+        /** Body_upload_draft_api_v1_drafts_upload_post */
+        Body_upload_draft_api_v1_drafts_upload_post: {
             /** File */
             file: string;
         };
@@ -505,11 +486,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /**
-             * Project Id
-             * Format: uuid
-             */
-            project_id: string;
             /** Original Filename */
             original_filename: string;
             /** Mime Type */
@@ -541,11 +517,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /**
-             * Project Id
-             * Format: uuid
-             */
-            project_id: string;
             /** Original Filename */
             original_filename: string;
             /** Mime Type */
@@ -563,6 +534,28 @@ export interface components {
             created_at: string;
             /** Parsed At */
             parsed_at: string | null;
+        };
+        /**
+         * DraftSummary
+         * @description Dashboard summary. `coverage_percentage` is computed once here so the
+         *     dashboard and any other consumer (export, future reporting) can never
+         *     disagree about what "coverage" means.
+         */
+        DraftSummary: {
+            /**
+             * Draft Id
+             * Format: uuid
+             */
+            draft_id: string;
+            references: components["schemas"]["ReferenceCounts"];
+            claims: components["schemas"]["ClaimCounts"];
+            /** Accepted Citations */
+            accepted_citations: number;
+            /** Claims With Accepted */
+            claims_with_accepted: number;
+            /** Coverage Percentage */
+            coverage_percentage: number;
+            latest_run: components["schemas"]["AnalysisRunStatus"] | null;
         };
         /**
          * ExportFormat
@@ -590,11 +583,6 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /**
-             * Project Id
-             * Format: uuid
-             */
-            project_id: string;
             /**
              * Draft Id
              * Format: uuid
@@ -627,8 +615,6 @@ export interface components {
         /** ExportRequest */
         ExportRequest: {
             format: components["schemas"]["ExportFormat"];
-            /** Draft Id */
-            draft_id?: string | null;
             /**
              * Citation Style
              * @default APA
@@ -663,81 +649,6 @@ export interface components {
          * @enum {string}
          */
         InsertionMode: "tracked_changes" | "direct" | "placeholder";
-        /** ProjectCreate */
-        ProjectCreate: {
-            /** Name */
-            name: string;
-            /** Description */
-            description?: string | null;
-            /** Field Of Study */
-            field_of_study?: string | null;
-            /**
-             * Citation Style
-             * @default APA
-             */
-            citation_style: string;
-        };
-        /** ProjectRead */
-        ProjectRead: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Name */
-            name: string;
-            /** Description */
-            description: string | null;
-            /** Field Of Study */
-            field_of_study: string | null;
-            /** Citation Style */
-            citation_style: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-        };
-        /**
-         * ProjectSummary
-         * @description Dashboard summary. `coverage_percentage` is computed once here so the
-         *     dashboard and any other consumer (export, future reporting) can never
-         *     disagree about what "coverage" means.
-         */
-        ProjectSummary: {
-            /**
-             * Project Id
-             * Format: uuid
-             */
-            project_id: string;
-            /** Draft Id */
-            draft_id: string | null;
-            references: components["schemas"]["ReferenceCounts"];
-            claims: components["schemas"]["ClaimCounts"];
-            /** Accepted Citations */
-            accepted_citations: number;
-            /** Claims With Accepted */
-            claims_with_accepted: number;
-            /** Coverage Percentage */
-            coverage_percentage: number;
-            latest_run: components["schemas"]["AnalysisRunStatus"] | null;
-        };
-        /** ProjectUpdate */
-        ProjectUpdate: {
-            /** Name */
-            name?: string | null;
-            /** Description */
-            description?: string | null;
-            /** Field Of Study */
-            field_of_study?: string | null;
-            /** Citation Style */
-            citation_style?: string | null;
-        };
         /** RecommendationRead */
         RecommendationRead: {
             /**
@@ -904,27 +815,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    list_projects_api_v1_projects_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProjectRead"][];
-                };
-            };
-        };
-    };
-    create_project_api_v1_projects_post: {
+    upload_draft_api_v1_drafts_upload_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -933,137 +824,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ProjectCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProjectRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_project_api_v1_projects__project_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProjectRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_project_api_v1_projects__project_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_project_api_v1_projects__project_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProjectUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProjectRead"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    upload_draft_api_v1_projects__project_id__drafts_upload_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_upload_draft_api_v1_projects__project_id__drafts_upload_post"];
+                "multipart/form-data": components["schemas"]["Body_upload_draft_api_v1_drafts_upload_post"];
             };
         };
         responses: {
@@ -1087,13 +848,11 @@ export interface operations {
             };
         };
     };
-    list_drafts_api_v1_projects__project_id__drafts_get: {
+    list_drafts_api_v1_drafts_get: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                project_id: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -1105,15 +864,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DraftRead"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1149,18 +899,16 @@ export interface operations {
             };
         };
     };
-    import_references_api_v1_projects__project_id__references_import_post: {
+    import_references_api_v1_library_import_post: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                project_id: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_import_references_api_v1_projects__project_id__references_import_post"];
+                "multipart/form-data": components["schemas"]["Body_import_references_api_v1_library_import_post"];
             };
         };
         responses: {
@@ -1184,13 +932,33 @@ export interface operations {
             };
         };
     };
-    references_status_api_v1_projects__project_id__references_status_get: {
+    refresh_library_api_v1_library_refresh_post: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                project_id: string;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
             };
+        };
+    };
+    references_status_api_v1_library_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -1204,18 +972,9 @@ export interface operations {
                     "application/json": components["schemas"]["ReferenceCounts"];
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
-    list_references_api_v1_projects__project_id__references_get: {
+    list_references_api_v1_library_get: {
         parameters: {
             query?: {
                 enrichment_status?: string | null;
@@ -1223,9 +982,7 @@ export interface operations {
                 offset?: number;
             };
             header?: never;
-            path: {
-                project_id: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -1250,20 +1007,16 @@ export interface operations {
             };
         };
     };
-    run_analysis_api_v1_projects__project_id__analysis_run_post: {
+    run_analysis_api_v1_drafts__draft_id__analysis_run_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                project_id: string;
+                draft_id: string;
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AnalysisRunRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             202: {
@@ -1285,12 +1038,12 @@ export interface operations {
             };
         };
     };
-    analysis_status_api_v1_projects__project_id__analysis_status_get: {
+    analysis_status_api_v1_drafts__draft_id__analysis_status_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                project_id: string;
+                draft_id: string;
             };
             cookie?: never;
         };
@@ -1316,12 +1069,12 @@ export interface operations {
             };
         };
     };
-    project_summary_api_v1_projects__project_id__summary_get: {
+    draft_summary_api_v1_drafts__draft_id__summary_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                project_id: string;
+                draft_id: string;
             };
             cookie?: never;
         };
@@ -1333,7 +1086,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProjectSummary"];
+                    "application/json": components["schemas"]["DraftSummary"];
                 };
             };
             /** @description Validation Error */
@@ -1590,12 +1343,12 @@ export interface operations {
             };
         };
     };
-    list_exports_api_v1_projects__project_id__exports_get: {
+    list_exports_api_v1_drafts__draft_id__exports_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                project_id: string;
+                draft_id: string;
             };
             cookie?: never;
         };
@@ -1621,12 +1374,12 @@ export interface operations {
             };
         };
     };
-    create_export_api_v1_projects__project_id__exports_post: {
+    create_export_api_v1_drafts__draft_id__exports_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                project_id: string;
+                draft_id: string;
             };
             cookie?: never;
         };

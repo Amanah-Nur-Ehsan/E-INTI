@@ -4,138 +4,96 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 import type { components } from "./schema";
 
-type ProjectRead = components["schemas"]["ProjectRead"];
-type ProjectCreate = components["schemas"]["ProjectCreate"];
 type DraftRead = components["schemas"]["DraftRead"];
+type DraftDetail = components["schemas"]["DraftDetail"];
 type ImportResult = components["schemas"]["ImportResult"];
 type ReferenceCounts = components["schemas"]["ReferenceCounts"];
 type AnalysisRunStatus = components["schemas"]["AnalysisRunStatus"];
+type AnalysisRunAccepted = components["schemas"]["AnalysisRunAccepted"];
 type ClaimRead = components["schemas"]["ClaimRead"];
 type RecommendationRead = components["schemas"]["RecommendationRead"];
-type ProjectSummary = components["schemas"]["ProjectSummary"];
 type ExportRead = components["schemas"]["ExportRead"];
 type ExportRequest = components["schemas"]["ExportRequest"];
 
 const RUNNING_STATUSES = new Set(["PENDING", "RUNNING"]);
 
-export function useProjects() {
+export function useLibraryStatus() {
   return useQuery({
-    queryKey: ["projects"],
-    queryFn: () => api.get("/api/v1/projects"),
-  });
-}
-
-export function useProject(projectId: string) {
-  return useQuery({
-    queryKey: ["projects", projectId],
-    queryFn: () => api.get("/api/v1/projects/{project_id}", { params: { project_id: projectId } }),
-    enabled: Boolean(projectId),
-  });
-}
-
-export function useCreateProject() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (body: ProjectCreate) => api.post("/api/v1/projects", { body }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
-    },
-  });
-}
-
-export function useProjectSummary(projectId: string) {
-  return useQuery({
-    queryKey: ["projects", projectId, "summary"],
-    queryFn: () =>
-      api.get("/api/v1/projects/{project_id}/summary", { params: { project_id: projectId } }),
-    enabled: Boolean(projectId),
+    queryKey: ["library", "status"],
+    queryFn: () => api.get("/api/v1/library/status"),
     refetchInterval: (query) => {
-      const data = query.state.data as ProjectSummary | undefined;
-      return data?.latest_run && RUNNING_STATUSES.has(data.latest_run.status) ? 3000 : false;
+      const data = query.state.data as ReferenceCounts | undefined;
+      return data && data.pending > 0 ? 3000 : false;
     },
   });
 }
 
-export function useDrafts(projectId: string) {
-  return useQuery({
-    queryKey: ["projects", projectId, "drafts"],
-    queryFn: () =>
-      api.get("/api/v1/projects/{project_id}/drafts", { params: { project_id: projectId } }),
-    enabled: Boolean(projectId),
-  });
-}
-
-export function useUploadDraft(projectId: string) {
+export function useImportLibrary() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (file: File) => {
       const { postFormData } = await import("./client");
-      return postFormData(`/api/v1/projects/{project_id}/drafts/upload`, file, {
-        project_id: projectId,
-      }) as Promise<DraftRead>;
+      return postFormData("/api/v1/library/import", file) as Promise<ImportResult>;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["projects", projectId, "drafts"] });
-      queryClient.invalidateQueries({ queryKey: ["projects", projectId, "summary"] });
+      queryClient.invalidateQueries({ queryKey: ["library", "status"] });
     },
   });
 }
 
-export function useReferenceStatus(projectId: string) {
-  return useQuery({
-    queryKey: ["projects", projectId, "references", "status"],
-    queryFn: () =>
-      api.get("/api/v1/projects/{project_id}/references/status", {
-        params: { project_id: projectId },
-      }),
-    enabled: Boolean(projectId),
+export function useRefreshLibrary() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post("/api/v1/library/refresh"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["library", "status"] });
+    },
   });
 }
 
-export function useImportReferences(projectId: string) {
-  const queryClient = useQueryClient();
+export function useUploadDraft() {
   return useMutation({
     mutationFn: async (file: File) => {
       const { postFormData } = await import("./client");
-      return postFormData(`/api/v1/projects/{project_id}/references/import`, file, {
-        project_id: projectId,
-      }) as Promise<ImportResult>;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["projects", projectId, "references"] });
-      queryClient.invalidateQueries({ queryKey: ["projects", projectId, "summary"] });
+      return postFormData("/api/v1/drafts/upload", file) as Promise<DraftRead>;
     },
   });
 }
 
-export function useRunAnalysis(projectId: string) {
+export function useRunAnalysis(draftId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (draftId?: string) =>
-      api.post("/api/v1/projects/{project_id}/analysis/run", {
-        params: { project_id: projectId },
-        body: draftId ? { draft_id: draftId } : {},
-      }),
+    mutationFn: () =>
+      api.post("/api/v1/drafts/{draft_id}/analysis/run", {
+        params: { draft_id: draftId },
+      }) as Promise<AnalysisRunAccepted>,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["projects", projectId, "analysis-status"] });
-      queryClient.invalidateQueries({ queryKey: ["projects", projectId, "summary"] });
+      queryClient.invalidateQueries({ queryKey: ["drafts", draftId, "analysis-status"] });
     },
   });
 }
 
-export function useAnalysisStatus(projectId: string) {
+export function useAnalysisStatus(draftId: string) {
   return useQuery({
-    queryKey: ["projects", projectId, "analysis-status"],
+    queryKey: ["drafts", draftId, "analysis-status"],
     queryFn: () =>
-      api.get("/api/v1/projects/{project_id}/analysis/status", {
-        params: { project_id: projectId },
+      api.get("/api/v1/drafts/{draft_id}/analysis/status", {
+        params: { draft_id: draftId },
       }),
-    enabled: Boolean(projectId),
+    enabled: Boolean(draftId),
     retry: false,
     refetchInterval: (query) => {
       const data = query.state.data as AnalysisRunStatus | undefined;
       return data && RUNNING_STATUSES.has(data.status) ? 3000 : false;
     },
+  });
+}
+
+export function useDraft(draftId: string) {
+  return useQuery({
+    queryKey: ["drafts", draftId],
+    queryFn: () => api.get("/api/v1/drafts/{draft_id}", { params: { draft_id: draftId } }),
+    enabled: Boolean(draftId),
   });
 }
 
@@ -147,14 +105,6 @@ export function useClaims(draftId: string, needsCitation?: boolean) {
         params: { draft_id: draftId },
         query: needsCitation === undefined ? undefined : { needs_citation: needsCitation },
       }),
-    enabled: Boolean(draftId),
-  });
-}
-
-export function useDraft(draftId: string) {
-  return useQuery({
-    queryKey: ["drafts", draftId],
-    queryFn: () => api.get("/api/v1/drafts/{draft_id}", { params: { draft_id: draftId } }),
     enabled: Boolean(draftId),
   });
 }
@@ -193,67 +143,32 @@ export function useSetDecision(draftId: string) {
         params: { recommendation_id: recommendationId },
         body: { decision, note },
       }),
-    // Optimistic update: flip the recommendation's user_decision in the
-    // cached batch immediately, so the highlight/ghost text reacts without
-    // waiting on the round trip.
-    onMutate: async ({ recommendationId, decision }) => {
-      const queryKey = ["drafts", draftId, "recommendations"];
-      await queryClient.cancelQueries({ queryKey });
-      const previous = queryClient.getQueryData<Record<string, RecommendationRead[]>>(queryKey);
-
-      if (previous) {
-        const next: Record<string, RecommendationRead[]> = {};
-        for (const [claimId, recs] of Object.entries(previous)) {
-          next[claimId] = recs.map((rec) =>
-            rec.id === recommendationId ? { ...rec, user_decision: decision } : rec,
-          );
-        }
-        queryClient.setQueryData(queryKey, next);
-      }
-      return { previous };
-    },
-    onError: (_err, _vars, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(["drafts", draftId, "recommendations"], context.previous);
-      }
-    },
-    onSettled: () => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["drafts", draftId, "recommendations"] });
       queryClient.invalidateQueries({ queryKey: ["drafts", draftId, "accepted-citations"] });
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
     },
   });
 }
 
-export function useCreateExport(projectId: string) {
-  const queryClient = useQueryClient();
+export function useCreateExport(draftId: string) {
   return useMutation({
     mutationFn: (body: ExportRequest) =>
-      api.post("/api/v1/projects/{project_id}/exports", { params: { project_id: projectId }, body }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["projects", projectId, "exports"] });
-    },
-  });
-}
-
-export function useExports(projectId: string) {
-  return useQuery({
-    queryKey: ["projects", projectId, "exports"],
-    queryFn: () =>
-      api.get("/api/v1/projects/{project_id}/exports", { params: { project_id: projectId } }),
-    enabled: Boolean(projectId),
+      api.post("/api/v1/drafts/{draft_id}/exports", {
+        params: { draft_id: draftId },
+        body,
+      }) as Promise<ExportRead>,
   });
 }
 
 export type {
-  ProjectRead,
   DraftRead,
+  DraftDetail,
   ImportResult,
   ReferenceCounts,
   AnalysisRunStatus,
+  AnalysisRunAccepted,
   ClaimRead,
   RecommendationRead,
-  ProjectSummary,
   ExportRead,
   ExportRequest,
 };
