@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend-e2e",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "frontend",
+      "env": { "API_ORIGIN": "http://localhost:8010" },
+      "port": 3000,
+      "autoPort": true
+    }
+  ]
+}
