@@ -104,3 +104,26 @@ class LLMVerificationCache(UUIDPrimaryKey, Base):
     )
 
     __table_args__ = (UniqueConstraint("claim_hash", "reference_id"),)
+
+
+class LLMClassificationCache(UUIDPrimaryKey, Base):
+    """Cache of Tier-1 needs-citation decisions keyed by (sentence_hash, model).
+
+    Claims are deleted and rebuilt on every detect run, so caching on a
+    claims column would be destroyed at exactly the moment it's needed.
+    This table survives that churn: keyed on the source sentence itself
+    (not the batch it happened to run in, and not the local context),
+    so an unchanged re-run makes zero Tier-1 calls.
+    """
+
+    __tablename__ = "llm_classification_cache"
+
+    sentence_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (UniqueConstraint("sentence_hash", "model"),)

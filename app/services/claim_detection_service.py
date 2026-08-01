@@ -15,14 +15,15 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.db.models import Claim, Draft
+from app.db.models import Claim, Draft, LLMClassificationCache
 from app.db.models.enums import ClaimType, DetectionMethod, ExistingCitationStatus
 from app.services.draft_parser_service import Sentence, local_context
-from app.services.llm_client import LLMOutputError, Tier, get_llm_client
+from app.services.llm_client import Tier, get_llm_client
 
 log = get_logger(__name__)
 
@@ -244,16 +245,20 @@ def classify_batch(
         sentences=numbered,
     )
 
-    try:
-        result = client.complete_structured(
-            tier=Tier.CLASSIFY,
-            system=CLASSIFY_SYSTEM,
-            user=user,
-            schema=ClaimBatchDecision,
-        )
-    except LLMOutputError as exc:
-        log.warning("claim_classification_failed", error=str(exc), batch=len(batch))
-        return {}
+    # No try/except here: a batch that fails after every transport retry and
+    # the Gemini fallback raises LLMOutputError straight through to the
+    # caller. Swallowing it used to return {} for the whole batch -- up to
+    # classify_batch_size sentences silently written off as "no citation
+    # needed" with nothing visible to the user. PipelineTask.run already
+    # catches this, marks the analysis_run FAILED with the message, and lets
+    # the user re-trigger it -- now warm-cached for every sentence that
+    # already succeeded (see _load_classification_cache below).
+    result = client.complete_structured(
+        tier=Tier.CLASSIFY,
+        system=CLASSIFY_SYSTEM,
+        user=user,
+        schema=ClaimBatchDecision,
+    )
 
     # Translate batch-local indices back to draft sentence indices, dropping
     # anything out of range rather than letting it land on the wrong sentence.
@@ -269,6 +274,40 @@ def classify_batch(
 def claim_hash(text: str) -> str:
     normalized = re.sub(r"\s+", " ", text.strip().lower())
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def _classification_model_name() -> str:
+    settings = get_settings()
+    return "mock" if settings.llm_mocked else settings.tier1_model
+
+
+def _load_classification_cache(
+    session: Session, sentence_hashes: list[str], model: str
+) -> dict[str, ClaimDecision]:
+    if not sentence_hashes:
+        return {}
+    rows = session.execute(
+        select(LLMClassificationCache).where(
+            LLMClassificationCache.sentence_hash.in_(sentence_hashes),
+            LLMClassificationCache.model == model,
+        )
+    ).scalars()
+    return {row.sentence_hash: ClaimDecision(**row.payload) for row in rows}
+
+
+def _store_classification_cache(
+    session: Session, sentence_hash: str, model: str, decision: ClaimDecision
+) -> None:
+    session.execute(
+        pg_insert(LLMClassificationCache)
+        .values(
+            id=uuid.uuid4(),
+            sentence_hash=sentence_hash,
+            model=model,
+            payload=decision.model_dump(),
+        )
+        .on_conflict_do_nothing(index_elements=["sentence_hash", "model"])
+    )
 
 
 def extract_keywords(text: str) -> list[str]:
@@ -323,13 +362,32 @@ def detect_and_store_claims(session: Session, draft_id: uuid.UUID) -> dict:
         if record["prefilter"].verdict is not PrefilterVerdict.SKIP:
             to_classify.append((index, sentence, context))
 
+    # Consult the Tier-1 cache before spending any LLM calls. Keyed on the
+    # sentence alone (not the batch, which varies between runs, and not the
+    # local context, where a neighbour edit would cold-cache an unchanged
+    # sentence for negligible benefit) -- so a re-run over an unmodified
+    # draft costs zero Tier-1 calls, and an edited draft pays only for the
+    # sentences that actually changed.
+    model_name = _classification_model_name()
+    hash_by_index = {index: claim_hash(sentence.text) for index, sentence, _ in to_classify}
+    cached = _load_classification_cache(session, list(hash_by_index.values()), model_name)
+
+    uncached: list[tuple[int, Sentence, str]] = []
+    for index, sentence, context in to_classify:
+        decision = cached.get(hash_by_index[index])
+        if decision is not None:
+            records[index]["decision"] = decision
+        else:
+            uncached.append((index, sentence, context))
+
     batch_size = get_settings().classify_batch_size
     llm_calls = 0
-    for start in range(0, len(to_classify), batch_size):
-        batch = to_classify[start : start + batch_size]
+    for start in range(0, len(uncached), batch_size):
+        batch = uncached[start : start + batch_size]
         decisions = classify_batch(client, batch, draft_title)
         llm_calls += 1
         for idx, decision in decisions.items():
+            _store_classification_cache(session, hash_by_index[idx], model_name, decision)
             if idx in records:
                 records[idx]["decision"] = decision
 
@@ -388,7 +446,11 @@ def detect_and_store_claims(session: Session, draft_id: uuid.UUID) -> dict:
                 detection_method=method,
                 existing_citation_text="; ".join(citations) or None,
                 existing_citation_status=citation_status,
-                claim_hash=claim_hash(claim_text),
+                # Hash the source sentence, not the LLM's paraphrase
+                # (claim_text): the paraphrase can drift between runs even
+                # at temperature 0.0, which would silently invalidate the
+                # verification cache. The sentence is stable.
+                claim_hash=claim_hash(sentence.text),
                 keywords=extract_keywords(sentence.text),
             )
         )

@@ -68,9 +68,13 @@ def recommend_for_claim(
     # top VERIFY_LIMIT (not every reranked candidate) is what keeps a
     # single claim from costing 10 Tier-2 calls when only a handful are
     # ever going to be shown.
+    # The verified claim text must match what claim_hash was computed from
+    # (the source sentence, not the LLM's paraphrase) -- otherwise the cache
+    # key and the cached content answer two different questions, and a
+    # re-run with a drifted paraphrase would silently return a stale verdict.
     outcomes = verify_candidates(
         session,
-        claim_text=claim.claim_text or claim.sentence_text,
+        claim_text=claim.sentence_text,
         claim_context=claim.local_context,
         claim_hash=claim.claim_hash or "",
         candidates=[candidate for candidate, _ in top],

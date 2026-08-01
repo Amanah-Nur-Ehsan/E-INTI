@@ -76,6 +76,20 @@ async def test_detection_is_idempotent(client, db_session, parsed_draft):
     assert len(claims) == first["claims"]
 
 
+async def test_second_run_makes_zero_tier1_calls(client, db_session, parsed_draft):
+    """The Tier-1 classification cache: an unchanged re-run must not spend
+    another LLM call per sentence, and must produce the identical decision
+    set it cached the first time.
+    """
+    first = detect_and_store_claims(db_session, parsed_draft)
+    assert first["llm_calls"] >= 1
+
+    second = detect_and_store_claims(db_session, parsed_draft)
+    assert second["llm_calls"] == 0
+    assert second["needs_citation"] == first["needs_citation"]
+    assert second["claims"] == first["claims"]
+
+
 async def test_needs_citation_filter(client, db_session, parsed_draft):
     detect_and_store_claims(db_session, parsed_draft)
     filtered = (

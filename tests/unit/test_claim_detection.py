@@ -144,6 +144,31 @@ def test_batch_indices_map_back_to_draft_sentences():
     assert '2. sentence: "We evaluate' in client.prompt
 
 
+class _AlwaysFailsClient:
+    """Stands in for a client whose transport retries and Gemini fallback
+    have both already been exhausted -- complete_structured's real failure
+    mode."""
+
+    def complete_structured(self, *, tier, system, user, schema):
+        from app.services.llm_client import LLMOutputError
+
+        raise LLMOutputError("Groq exhausted retries and Gemini fallback failed")
+
+
+def test_classify_batch_raises_rather_than_dropping_the_batch_silently():
+    """Previously a failed batch returned {}, which meant up to
+    classify_batch_size sentences were silently written off as "no citation
+    needed" with nothing visible to the user. It must now propagate, so
+    PipelineTask.run marks the analysis_run FAILED instead."""
+    from app.services.claim_detection_service import classify_batch
+    from app.services.draft_parser_service import Sentence
+    from app.services.llm_client import LLMOutputError
+
+    batch = [(0, Sentence("A claim sentence here.", 0, 22, 0, 0, "Intro"), "ctx")]
+    with pytest.raises(LLMOutputError):
+        classify_batch(_AlwaysFailsClient(), batch, "A draft")
+
+
 def test_out_of_range_decision_indices_are_discarded():
     from app.services.claim_detection_service import classify_batch
     from app.services.draft_parser_service import Sentence
