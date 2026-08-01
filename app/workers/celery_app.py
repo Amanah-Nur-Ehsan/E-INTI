@@ -10,8 +10,7 @@ celery_app = Celery(
     broker=settings.redis_url,
     backend=settings.redis_url,
     include=[
-        "app.workers.tasks.enrich_references",
-        "app.workers.tasks.generate_embeddings",
+        "app.workers.tasks.refresh_library",
         "app.workers.tasks.parse_draft",
         "app.workers.tasks.detect_claims",
         "app.workers.tasks.generate_recommendations",

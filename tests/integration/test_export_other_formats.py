@@ -16,10 +16,16 @@ from tests.conftest import create_project, import_dataset, upload_draft
 pytestmark = pytest.mark.integration
 
 
-async def _analyzed_draft(client, accept_all: bool = True):
+async def _analyzed_draft(client, db_session, accept_all: bool = True):
+    from app.services.embedding_service import embed_pending_references
+    from app.services.enrichment import enrich_pending_references
+
     project_id = await create_project(client, "P", field_of_study="Computer Science")
     draft_id = await upload_draft(client, project_id)
     await import_dataset(client, project_id)
+    enrich_pending_references(db_session)
+    embed_pending_references(db_session)
+    db_session.commit()
     await client.post(f"/api/v1/projects/{project_id}/analysis/run", json={})
 
     claims = (await client.get(f"/api/v1/drafts/{draft_id}/claims?needs_citation=true")).json()
@@ -34,7 +40,7 @@ async def _analyzed_draft(client, accept_all: bool = True):
 
 
 async def test_markdown_export_inserts_citations_and_bibliography(client, db_session):
-    draft_id, accepted, _claims = await _analyzed_draft(client)
+    draft_id, accepted, _claims = await _analyzed_draft(client, db_session)
     bundle = build_bundle(db_session, uuid.UUID(draft_id))
 
     body, outcomes = write_markdown(bundle)
@@ -73,7 +79,7 @@ async def test_markdown_works_for_non_docx_drafts(client, db_session):
 async def test_markdown_reports_position_mismatch(client, db_session):
     from app.db.models import Claim
 
-    draft_id, accepted, _claims = await _analyzed_draft(client)
+    draft_id, accepted, _claims = await _analyzed_draft(client, db_session)
     assert accepted
 
     claim = db_session.get(Claim, uuid.UUID(accepted[0]))
@@ -89,7 +95,7 @@ async def test_markdown_reports_position_mismatch(client, db_session):
 
 
 async def test_csv_export_is_valid_and_has_one_row_per_needs_citation_claim(client, db_session):
-    draft_id, _accepted, claims = await _analyzed_draft(client)
+    draft_id, _accepted, claims = await _analyzed_draft(client, db_session)
     bundle = build_bundle(db_session, uuid.UUID(draft_id))
 
     csv_text = write_csv(bundle)
@@ -99,7 +105,7 @@ async def test_csv_export_is_valid_and_has_one_row_per_needs_citation_claim(clie
 
 
 async def test_csv_reports_not_accepted_for_claims_without_a_decision(client, db_session):
-    draft_id, _accepted, claims = await _analyzed_draft(client, accept_all=False)
+    draft_id, _accepted, claims = await _analyzed_draft(client, db_session, accept_all=False)
     bundle = build_bundle(db_session, uuid.UUID(draft_id))
 
     csv_text = write_csv(bundle)
@@ -111,7 +117,7 @@ async def test_csv_reports_not_accepted_for_claims_without_a_decision(client, db
 
 
 async def test_json_export_structure(client, db_session):
-    draft_id, accepted, claims = await _analyzed_draft(client)
+    draft_id, accepted, claims = await _analyzed_draft(client, db_session)
     bundle = build_bundle(db_session, uuid.UUID(draft_id))
 
     payload = json.loads(write_json(bundle, citation_style="APA", insertion_mode="tracked_changes"))
@@ -128,7 +134,7 @@ async def test_json_export_structure(client, db_session):
 async def test_audit_rows_capture_score_and_verdict_from_the_accepted_recommendation(
     client, db_session
 ):
-    draft_id, accepted, _claims = await _analyzed_draft(client)
+    draft_id, accepted, _claims = await _analyzed_draft(client, db_session)
     assert accepted
     bundle = build_bundle(db_session, uuid.UUID(draft_id))
 
@@ -144,7 +150,7 @@ async def test_audit_rows_capture_score_and_verdict_from_the_accepted_recommenda
 async def test_audit_row_dedupes_multi_reference_citation_text(client, db_session):
     """A claim with two accepted references must show one semicolon-joined
     citation string, not two separate rows."""
-    draft_id, _accepted, claims = await _analyzed_draft(client, accept_all=False)
+    draft_id, _accepted, claims = await _analyzed_draft(client, db_session, accept_all=False)
     needing = [c for c in claims][0]
     recs = (await client.get(f"/api/v1/claims/{needing['id']}/recommendations?limit=5")).json()
     assume_two = [r for r in recs if r["score_percentage"] > 0][:2]

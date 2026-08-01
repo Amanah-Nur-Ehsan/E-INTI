@@ -8,7 +8,6 @@ rows parse in well under a second; only enrichment is asynchronous.
 
 import io
 import re
-import uuid
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -203,17 +202,18 @@ def normalize_title(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", title.lower()).strip()
 
 
-def import_dataset(
-    session: Session, project_id: uuid.UUID, content: bytes, filename: str
-) -> ImportSummary:
+def import_dataset(session: Session, content: bytes, filename: str) -> ImportSummary:
+    """Import into the shared library. Duplicates (by DOI, then EID, then
+    normalized title for rows with neither) are skipped against the whole
+    library, not just this file -- re-uploading the same dataset, or one
+    with overlapping rows, adds only what's actually new.
+    """
     frame = read_table(content, filename)
     mapping = map_columns(list(frame.columns))
     summary = ImportSummary()
 
     existing = session.execute(
-        select(ReferencePaper.doi, ReferencePaper.scopus_eid, ReferencePaper.title).where(
-            ReferencePaper.project_id == project_id
-        )
+        select(ReferencePaper.doi, ReferencePaper.scopus_eid, ReferencePaper.title)
     ).all()
     seen_dois = {d for d, _, _ in existing if d}
     seen_eids = {e for _, e, _ in existing if e}
@@ -248,7 +248,6 @@ def import_dataset(
         trusted_abstract = abstract if abstract and len(abstract) >= MIN_TRUSTED_ABSTRACT_CHARS else None
 
         reference = ReferencePaper(
-            project_id=project_id,
             original_row_number=_to_int(col(row, "original_row_number")) or position,
             original_data={str(k): _clean(v) for k, v in row.items()},
             title=title,

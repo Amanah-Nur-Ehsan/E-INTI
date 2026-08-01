@@ -20,11 +20,10 @@ async def test_draft_upload_rejects_oversized_file(client, monkeypatch):
 
 async def test_reference_import_rejects_oversized_file(client, monkeypatch):
     monkeypatch.setattr(get_settings(), "max_upload_mb", 1)
-    project_id = await create_project(client, "P")
 
     oversized = b"NO.,TITLE,LINK\n" + b"x" * (2 * 1024 * 1024)
     resp = await client.post(
-        f"/api/v1/projects/{project_id}/references/import",
+        "/api/v1/library/import",
         files={"file": ("big.csv", oversized)},
     )
     assert resp.status_code == 413

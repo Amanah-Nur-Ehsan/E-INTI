@@ -79,20 +79,30 @@ async def upload_draft(client, project_id: str, filename: str = "sample_draft.do
     return resp.json()["id"]
 
 
-async def import_dataset(client, project_id: str, filename: str = "sample_dataset.xlsx") -> dict:
+async def import_dataset(client, project_id: str | None = None, filename: str = "sample_dataset.xlsx") -> dict:
+    """Import the fixture dataset into the shared library.
+
+    `project_id` is accepted (and ignored) for backwards compatibility with
+    the many call sites that predate the global library -- the library has
+    no project scoping.
+    """
     data = (FIXTURES / filename).read_bytes()
-    resp = await client.post(
-        f"/api/v1/projects/{project_id}/references/import", files={"file": (filename, data)}
-    )
+    resp = await client.post("/api/v1/library/import", files={"file": (filename, data)})
     return resp.json()
 
 
 @pytest.fixture
-async def seeded_project(client) -> str:
-    """Project with the fixture draft uploaded and the fixture dataset imported."""
+async def seeded_project(client, db_session) -> str:
+    """Project with the fixture draft uploaded and the shared library seeded+enriched."""
+    from app.services.embedding_service import embed_pending_references
+    from app.services.enrichment import enrich_pending_references
+
     project_id = await create_project(client, "Fraud detection", field_of_study="Computer Science")
     await upload_draft(client, project_id)
-    await import_dataset(client, project_id)
+    await import_dataset(client)
+    enrich_pending_references(db_session)
+    embed_pending_references(db_session)
+    db_session.commit()
     return project_id
 
 

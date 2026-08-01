@@ -23,6 +23,3 @@ class Project(UUIDPrimaryKey, TimestampMixin, Base):
     drafts: Mapped[list["Draft"]] = relationship(  # noqa: F821
         back_populates="project", cascade="all, delete-orphan"
     )
-    references: Mapped[list["ReferencePaper"]] = relationship(  # noqa: F821
-        back_populates="project", cascade="all, delete-orphan"
-    )

@@ -12,9 +12,10 @@ never imports torch.
 
 import hashlib
 import uuid
+from collections import namedtuple
 
 import numpy as np
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -158,50 +159,70 @@ def reference_embedding_text(reference: ReferencePaper, separator: str = "[SEP]"
     return f"{parts[0]}{separator}{' '.join(body_parts)}".strip()
 
 
+_TextFields = namedtuple("_TextFields", ["title", "abstract", "author_keywords", "index_keywords"])
+
+
 def claim_embedding_text(claim_text: str, context: str | None = None) -> str:
     """Queries use the same encoder; context sharpens an otherwise terse claim."""
     return context.strip() if context and context.strip() else claim_text
 
 
-def embed_project_references(session: Session, project_id: uuid.UUID) -> dict:
-    """Stage body: embed references whose embedded text has changed.
+def embed_pending_references(session: Session) -> dict:
+    """Embed library references whose embedded text has changed.
 
     The content hash covers title + abstract + keywords, so enrichment
-    filling in an abstract invalidates a stale vector automatically.
+    filling in an abstract invalidates a stale vector automatically. Runs
+    on the library's own schedule (POST /library/refresh), same as
+    enrichment -- embedding cost belongs to the paper, not to whichever
+    draft happens to cite it.
+
+    Selects specific columns rather than full ORM entities so a run over
+    the whole library doesn't pull every row's 768-float vector just to
+    test whether it's already set -- at several thousand rows that's
+    tens of megabytes moved for a boolean check.
     """
-    references = list(
-        session.execute(
-            select(ReferencePaper)
-            .where(ReferencePaper.project_id == project_id)
-            .order_by(ReferencePaper.original_row_number)
-        ).scalars()
-    )
-    if not references:
-        return {"embedded": 0, "skipped": 0, "no_abstract": 0}
+    counts = {"embedded": 0, "skipped": 0, "no_abstract": 0}
+
+    counts["no_abstract"] = session.execute(
+        select(func.count()).select_from(ReferencePaper).where(ReferencePaper.abstract.is_(None))
+    ).scalar_one()
+
+    rows = session.execute(
+        select(
+            ReferencePaper.id,
+            ReferencePaper.title,
+            ReferencePaper.abstract,
+            ReferencePaper.author_keywords,
+            ReferencePaper.index_keywords,
+            ReferencePaper.content_hash,
+            ReferencePaper.embedding.isnot(None),
+        )
+        .where(ReferencePaper.abstract.isnot(None))
+        .order_by(ReferencePaper.created_at)
+    ).all()
+    if not rows:
+        return counts
 
     service = get_embedding_service()
     separator = "[SEP]" if service.settings.embedding_fake else service.separator
 
-    pending: list[tuple[ReferencePaper, str, str]] = []
-    counts = {"embedded": 0, "skipped": 0, "no_abstract": 0}
-
-    for reference in references:
-        if not reference.abstract:
-            # Nothing meaningful to embed; retrieval will never surface it.
-            counts["no_abstract"] += 1
-            continue
-        text = reference_embedding_text(reference, separator)
+    pending: list[tuple[uuid.UUID, str, str]] = []
+    for ref_id, title, abstract, author_kw, index_kw, existing_hash, has_embedding in rows:
+        text = reference_embedding_text(
+            _TextFields(title, abstract, author_kw, index_kw), separator
+        )
         digest = content_hash(text)
-        if reference.embedding is not None and reference.content_hash == digest:
+        if has_embedding and existing_hash == digest:
             counts["skipped"] += 1
             continue
-        pending.append((reference, text, digest))
+        pending.append((ref_id, text, digest))
 
     batch_size = 16
     for start in range(0, len(pending), batch_size):
         chunk = pending[start : start + batch_size]
         vectors = service.encode([text for _, text, _ in chunk])
-        for (reference, _, digest), vector in zip(chunk, vectors, strict=True):
+        for (ref_id, _text, digest), vector in zip(chunk, vectors, strict=True):
+            reference = session.get(ReferencePaper, ref_id)
             reference.embedding = vector.tolist()
             reference.content_hash = digest
             reference.embedding_model = service.model_revision

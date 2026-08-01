@@ -10,7 +10,7 @@ class GenerateRecommendationsTask(PipelineTask):
     def run_stage(self, ctx: RunContext) -> dict:
         from app.services.recommendation_pipeline import recommend_for_draft
 
-        return recommend_for_draft(ctx.session, ctx.project_id, ctx.draft_id)
+        return recommend_for_draft(ctx.session, ctx.draft_id)
 
 
 generate_recommendations = celery_app.register_task(GenerateRecommendationsTask())

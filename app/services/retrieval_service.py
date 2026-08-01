@@ -24,7 +24,6 @@ RERANK_LIMIT = 10
 W_SEMANTIC = 0.55
 W_BM25 = 0.20
 W_KEYWORD = 0.15
-W_FIELD = 0.10
 
 _TOKEN_RE = re.compile(r"[a-z][a-z0-9\-]{2,}")
 STOPWORDS = {
@@ -67,21 +66,20 @@ class Candidate:
         return " ".join(parts)
 
 
-class ProjectCorpus:
-    """BM25 index over every embedded reference in the project.
+class LibraryCorpus:
+    """BM25 index over every embedded reference in the shared library.
 
     Built once per run so IDF reflects the whole corpus, not the 20 rows a
     single claim happened to retrieve.
     """
 
-    def __init__(self, session: Session, project_id: uuid.UUID):
+    def __init__(self, session: Session):
         rows = session.execute(
             text(
                 "SELECT id, title, abstract, author_keywords, index_keywords "
                 "FROM reference_papers "
-                "WHERE project_id = :pid AND embedding IS NOT NULL"
-            ),
-            {"pid": str(project_id)},
+                "WHERE embedding IS NOT NULL"
+            )
         ).all()
 
         self.reference_ids = [row[0] for row in rows]
@@ -147,18 +145,8 @@ def keyword_overlap(claim_keywords: list[str], candidate: Candidate) -> float:
     return jaccard(claim_tokens, candidate_tokens)
 
 
-def field_match(project_field: str | None, candidate: Candidate) -> float:
-    if not project_field or not candidate.field_of_study:
-        return 0.0
-    left, right = set(tokenize(project_field)), set(tokenize(candidate.field_of_study))
-    if not left or not right:
-        return 0.0
-    return 1.0 if len(left & right) / len(left) >= 0.5 else 0.0
-
-
 def vector_search(
     session: Session,
-    project_id: uuid.UUID,
     query_vector: np.ndarray,
     limit: int = RETRIEVAL_LIMIT,
 ) -> list[Candidate]:
@@ -168,11 +156,11 @@ def vector_search(
             "       year, source_title, doi, "
             "       1 - (embedding <=> CAST(:v AS vector)) AS semantic_similarity "
             "FROM reference_papers "
-            "WHERE project_id = :pid AND embedding IS NOT NULL "
+            "WHERE embedding IS NOT NULL "
             "ORDER BY embedding <=> CAST(:v AS vector) "
             "LIMIT :k"
         ),
-        {"v": str(query_vector.tolist()), "pid": str(project_id), "k": limit},
+        {"v": str(query_vector.tolist()), "k": limit},
     ).all()
 
     return [
@@ -194,10 +182,9 @@ def vector_search(
 
 def prerank(
     candidates: list[Candidate],
-    corpus: ProjectCorpus,
+    corpus: LibraryCorpus,
     query: str,
     claim_keywords: list[str],
-    project_field: str | None,
     limit: int = RERANK_LIMIT,
 ) -> list[Candidate]:
     if not candidates:
@@ -207,12 +194,10 @@ def prerank(
     for candidate in candidates:
         candidate.lexical_similarity = bm25.get(candidate.reference_id, 0.0)
         candidate.keyword_overlap = keyword_overlap(claim_keywords, candidate)
-        candidate.field_match = field_match(project_field, candidate)
         candidate.prerank_score = (
             W_SEMANTIC * candidate.semantic_similarity
             + W_BM25 * candidate.lexical_similarity
             + W_KEYWORD * candidate.keyword_overlap
-            + W_FIELD * candidate.field_match
         )
 
     candidates.sort(key=lambda c: c.prerank_score, reverse=True)

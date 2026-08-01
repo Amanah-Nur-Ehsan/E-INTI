@@ -21,11 +21,16 @@ async def _analyzed_draft(client, db_session):
     """Upload+import+run analysis, accept every claim's top recommendation,
     and return (draft_id, accepted_claim_ids).
     """
+    from app.services.embedding_service import embed_pending_references
+    from app.services.enrichment import enrich_pending_references
     from tests.conftest import create_project, import_dataset, upload_draft
 
     project_id = await create_project(client, "P", field_of_study="Computer Science")
     draft_id = await upload_draft(client, project_id)
     await import_dataset(client, project_id)
+    enrich_pending_references(db_session)
+    embed_pending_references(db_session)
+    db_session.commit()
     await client.post(f"/api/v1/projects/{project_id}/analysis/run", json={})
 
     claims = (await client.get(f"/api/v1/drafts/{draft_id}/claims?needs_citation=true")).json()

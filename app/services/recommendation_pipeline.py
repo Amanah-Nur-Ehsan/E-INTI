@@ -7,14 +7,14 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.db.models import CitationRecommendation, Claim, Project
+from app.db.models import CitationRecommendation, Claim
 from app.db.models.enums import Verdict
 from app.services.embedding_service import claim_embedding_text, get_embedding_service
 from app.services.reranking_service import build_pair, get_reranking_service
 from app.services.retrieval_service import (
     RERANK_LIMIT,
     RETRIEVAL_LIMIT,
-    ProjectCorpus,
+    LibraryCorpus,
     prerank,
     vector_search,
 )
@@ -26,11 +26,10 @@ log = get_logger(__name__)
 
 def recommend_for_claim(
     session: Session,
-    project: Project,
     claim: Claim,
-    corpus: ProjectCorpus,
+    corpus: LibraryCorpus,
 ) -> int:
-    """Run stages 1-5 for one claim and persist its top-5. Returns the count."""
+    """Run stages 1-5 for one claim and persist its top-3. Returns the count."""
     embedder = get_embedding_service()
     reranker = get_reranking_service()
 
@@ -38,7 +37,7 @@ def recommend_for_claim(
     query_vector = embedder.encode_one(query_text)
 
     # Stage 1: vector retrieval.
-    candidates = vector_search(session, project.id, query_vector, limit=RETRIEVAL_LIMIT)
+    candidates = vector_search(session, query_vector, limit=RETRIEVAL_LIMIT)
     if not candidates:
         return 0
 
@@ -48,7 +47,6 @@ def recommend_for_claim(
         corpus,
         query=query_text,
         claim_keywords=list(claim.keywords or []),
-        project_field=project.field_of_study,
         limit=RERANK_LIMIT,
     )
 
@@ -128,12 +126,8 @@ def recommend_for_claim(
     return len(scored)
 
 
-def recommend_for_draft(session: Session, project_id: uuid.UUID, draft_id: uuid.UUID) -> dict:
+def recommend_for_draft(session: Session, draft_id: uuid.UUID) -> dict:
     """Stage body: recommend references for every citation-worthy claim."""
-    project = session.get(Project, project_id)
-    if project is None:
-        raise ValueError(f"Project {project_id} not found")
-
     claims = list(
         session.execute(
             select(Claim)
@@ -144,10 +138,10 @@ def recommend_for_draft(session: Session, project_id: uuid.UUID, draft_id: uuid.
     if not claims:
         return {"claims_processed": 0, "recommendations": 0}
 
-    corpus = ProjectCorpus(session, project_id)
+    corpus = LibraryCorpus(session)
     total = 0
     for claim in claims:
-        total += recommend_for_claim(session, project, claim, corpus)
+        total += recommend_for_claim(session, claim, corpus)
 
     return {"claims_processed": len(claims), "recommendations": total}
 

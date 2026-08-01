@@ -18,7 +18,7 @@ async def test_run_requires_references(client):
     await upload_draft(client, project_id)
     resp = await client.post(f"/api/v1/projects/{project_id}/analysis/run", json={})
     assert resp.status_code == 400
-    assert "references" in resp.json()["detail"]
+    assert "library" in resp.json()["detail"]
 
 
 async def test_chain_runs_all_stages_to_completion(client, seeded_project):
@@ -52,7 +52,7 @@ async def test_second_run_is_rejected_while_one_is_active(client, seeded_project
 async def test_references_status_endpoint(client):
     project_id = await create_project(client)
     await import_dataset(client, project_id)
-    body = (await client.get(f"/api/v1/projects/{project_id}/references/status")).json()
+    body = (await client.get("/api/v1/library/status")).json()
     assert body == {
         "total": 12,
         "pending": 5,

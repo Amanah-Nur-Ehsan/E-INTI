@@ -1,11 +1,9 @@
-import uuid
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, Text, text
+from sqlalchemy import DateTime, Index, Integer, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKey
 from app.db.models.enums import EnrichmentStatus
@@ -14,7 +12,12 @@ EMBEDDING_DIM = 768
 
 
 class ReferencePaper(UUIDPrimaryKey, TimestampMixin, Base):
-    """A candidate reference from the user's uploaded dataset.
+    """A candidate reference in the shared library.
+
+    Global, not scoped to any project or draft: every uploaded paper
+    queries the same pool, and enrichment/embedding cost -- the scarce
+    resource -- is paid once per paper regardless of how many drafts
+    end up citing it.
 
     Named `reference_papers` rather than the spec's `references` because
     REFERENCES is a reserved SQL word that would need quoting everywhere.
@@ -22,12 +25,6 @@ class ReferencePaper(UUIDPrimaryKey, TimestampMixin, Base):
 
     __tablename__ = "reference_papers"
 
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("projects.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
     original_row_number: Mapped[int | None] = mapped_column(Integer)
     original_data: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
@@ -68,21 +65,17 @@ class ReferencePaper(UUIDPrimaryKey, TimestampMixin, Base):
     #: sha256 of the embedded text; drives re-embed-only-changed.
     content_hash: Mapped[str | None] = mapped_column(Text)
 
-    project: Mapped["Project"] = relationship(back_populates="references")  # noqa: F821
-
-    # Partial unique indexes: rows we could not identify keep doi/eid NULL and
-    # must not collide with each other.
+    # Global partial unique indexes: rows we could not identify keep doi/eid
+    # NULL and must not collide with each other.
     __table_args__ = (
         Index(
-            "uq_reference_papers_project_id_doi",
-            "project_id",
+            "uq_reference_papers_doi",
             "doi",
             unique=True,
             postgresql_where=text("doi IS NOT NULL"),
         ),
         Index(
-            "uq_reference_papers_project_id_scopus_eid",
-            "project_id",
+            "uq_reference_papers_scopus_eid",
             "scopus_eid",
             unique=True,
             postgresql_where=text("scopus_eid IS NOT NULL"),

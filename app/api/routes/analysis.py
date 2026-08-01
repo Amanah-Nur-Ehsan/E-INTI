@@ -25,17 +25,19 @@ router = APIRouter(prefix="/projects/{project_id}", tags=["analysis"])
 
 
 def build_analysis_chain(run_id: uuid.UUID):
-    """Linear chain of idempotent stages; each stage takes only the run id."""
+    """Linear chain of idempotent stages; each stage takes only the run id.
+
+    Enrichment and embedding are no longer part of a per-draft run -- the
+    reference library is maintained on its own schedule via
+    POST /library/refresh, since that cost belongs to the paper, not to
+    whichever draft happens to cite it.
+    """
     from app.workers.tasks.detect_claims import detect_claims
-    from app.workers.tasks.enrich_references import enrich_references
-    from app.workers.tasks.generate_embeddings import generate_embeddings
     from app.workers.tasks.generate_recommendations import generate_recommendations
     from app.workers.tasks.parse_draft import parse_draft
 
     rid = str(run_id)
     return chain(
-        enrich_references.si(rid),
-        generate_embeddings.si(rid),
         parse_draft.si(rid),
         detect_claims.si(rid),
         generate_recommendations.si(rid),
@@ -57,14 +59,12 @@ async def run_analysis(
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Draft {draft_id} not found in project")
 
     n_refs = (
-        await session.execute(
-            select(func.count())
-            .select_from(ReferencePaper)
-            .where(ReferencePaper.project_id == project.id)
-        )
+        await session.execute(select(func.count()).select_from(ReferencePaper))
     ).scalar_one()
     if n_refs == 0:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Project has no imported references")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "The reference library is empty -- import the dataset first"
+        )
 
     active = (
         (
@@ -122,7 +122,7 @@ async def _build_run_status(session, project_id: uuid.UUID, run: AnalysisRun) ->
         error=run.error,
         started_at=run.started_at,
         finished_at=run.finished_at,
-        references=await reference_counts(session, project_id),
+        references=await reference_counts(session),
         claims=await claim_counts(session, run.draft_id),
     )
 
@@ -143,7 +143,7 @@ async def project_summary(project: ProjectDep, session: SessionDep) -> ProjectSu
     draft_id = await latest_draft_id(session, project.id)
     run = await _latest_run(session, project.id)
 
-    references = await reference_counts(session, project.id)
+    references = await reference_counts(session)
     if draft_id is not None:
         claims = await claim_counts(session, draft_id)
         accepted_total, claims_with_accepted = await accepted_citation_counts(session, draft_id)

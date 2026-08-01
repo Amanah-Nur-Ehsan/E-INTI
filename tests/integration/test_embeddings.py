@@ -4,25 +4,23 @@ from sqlalchemy import select, text
 
 from app.db.models import ReferencePaper
 from app.services.embedding_service import (
-    embed_project_references,
+    embed_pending_references,
     fake_embed,
     reference_embedding_text,
 )
-from app.services.enrichment import enrich_project_references
+from app.services.enrichment import enrich_pending_references
 from tests.conftest import FIXTURES
 
 pytestmark = pytest.mark.integration
 
 
-async def _enriched_project(client, db_session):
-    project_id = (await client.post("/api/v1/projects", json={"name": "P"})).json()["id"]
+async def _enriched_library(client, db_session):
     data = (FIXTURES / "sample_dataset.xlsx").read_bytes()
     await client.post(
-        f"/api/v1/projects/{project_id}/references/import",
+        "/api/v1/library/import",
         files={"file": ("sample_dataset.xlsx", data)},
     )
-    enrich_project_references(db_session, project_id)
-    return project_id
+    enrich_pending_references(db_session)
 
 
 def test_fake_embeddings_are_normalized_and_overlap_aware():
@@ -53,17 +51,15 @@ def test_reference_embedding_text_uses_title_sep_abstract():
 
 
 async def test_embeds_references_with_abstracts_only(client, db_session):
-    project_id = await _enriched_project(client, db_session)
+    await _enriched_library(client, db_session)
 
-    counts = embed_project_references(db_session, project_id)
+    counts = embed_pending_references(db_session)
     assert counts["embedded"] == 10  # 7 dataset + 3 enriched
     assert counts["no_abstract"] == 2
     assert counts["skipped"] == 0
 
     stored = db_session.execute(
-        select(ReferencePaper).where(
-            ReferencePaper.project_id == project_id, ReferencePaper.embedding.isnot(None)
-        )
+        select(ReferencePaper).where(ReferencePaper.embedding.isnot(None))
     ).scalars()
     stored = list(stored)
     assert len(stored) == 10
@@ -72,30 +68,32 @@ async def test_embeds_references_with_abstracts_only(client, db_session):
 
 
 async def test_reembeds_only_changed_content(client, db_session):
-    project_id = await _enriched_project(client, db_session)
-    embed_project_references(db_session, project_id)
+    await _enriched_library(client, db_session)
+    embed_pending_references(db_session)
 
-    second = embed_project_references(db_session, project_id)
+    second = embed_pending_references(db_session)
     assert second["embedded"] == 0
     assert second["skipped"] == 10
 
-    changed = db_session.execute(
-        select(ReferencePaper).where(
-            ReferencePaper.project_id == project_id, ReferencePaper.abstract.isnot(None)
+    changed = (
+        db_session.execute(
+            select(ReferencePaper).where(ReferencePaper.abstract.isnot(None))
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     changed.abstract = changed.abstract + " An additional sentence changes the hash."
     db_session.commit()
 
-    third = embed_project_references(db_session, project_id)
+    third = embed_pending_references(db_session)
     assert third["embedded"] == 1
     assert third["skipped"] == 9
 
 
 async def test_pgvector_nearest_neighbour_query(client, db_session):
     """The HNSW/cosine path returns the topically closest reference first."""
-    project_id = await _enriched_project(client, db_session)
-    embed_project_references(db_session, project_id)
+    await _enriched_library(client, db_session)
+    embed_pending_references(db_session)
 
     query = fake_embed(
         [
@@ -108,10 +106,10 @@ async def test_pgvector_nearest_neighbour_query(client, db_session):
         text(
             "SELECT title, 1 - (embedding <=> CAST(:v AS vector)) AS similarity "
             "FROM reference_papers "
-            "WHERE project_id = CAST(:pid AS uuid) AND embedding IS NOT NULL "
+            "WHERE embedding IS NOT NULL "
             "ORDER BY embedding <=> CAST(:v AS vector) LIMIT 3"
         ),
-        {"v": str(query.tolist()), "pid": str(project_id)},
+        {"v": str(query.tolist())},
     ).all()
 
     assert rows[0][0] == "Machine Learning Methods for Financial Fraud Detection"

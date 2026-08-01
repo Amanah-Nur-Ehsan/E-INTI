@@ -8,18 +8,16 @@ from tests.conftest import FIXTURES
 pytestmark = pytest.mark.integration
 
 
-async def _import(client, project_id, filename="sample_dataset.xlsx"):
+async def _import(client, filename="sample_dataset.xlsx"):
     data = (FIXTURES / filename).read_bytes()
     return await client.post(
-        f"/api/v1/projects/{project_id}/references/import",
+        "/api/v1/library/import",
         files={"file": (filename, data)},
     )
 
 
 async def test_import_xlsx_populates_references(client, db_session):
-    project_id = (await client.post("/api/v1/projects", json={"name": "P"})).json()["id"]
-
-    resp = await _import(client, project_id)
+    resp = await _import(client)
     assert resp.status_code == 201
     body = resp.json()
     assert body["imported"] == 12
@@ -50,9 +48,8 @@ async def test_import_xlsx_populates_references(client, db_session):
 
 
 async def test_reimport_skips_duplicates(client):
-    project_id = (await client.post("/api/v1/projects", json={"name": "P"})).json()["id"]
-    await _import(client, project_id)
-    second = await _import(client, project_id)
+    await _import(client)
+    second = await _import(client)
     assert second.json() == {
         "imported": 0,
         "skipped_duplicates": 12,
@@ -62,15 +59,13 @@ async def test_reimport_skips_duplicates(client):
 
 
 async def test_import_csv_equivalent_to_xlsx(client, db_session):
-    project_id = (await client.post("/api/v1/projects", json={"name": "P"})).json()["id"]
-    resp = await _import(client, project_id, "sample_dataset.csv")
+    resp = await _import(client, "sample_dataset.csv")
     assert resp.json()["imported"] == 12
 
 
 async def test_import_rejects_dataset_without_required_columns(client):
-    project_id = (await client.post("/api/v1/projects", json={"name": "P"})).json()["id"]
     resp = await client.post(
-        f"/api/v1/projects/{project_id}/references/import",
+        "/api/v1/library/import",
         files={"file": ("bad.csv", b"YEAR,AUTHORS\n2024,Smith\n")},
     )
     assert resp.status_code == 422
@@ -78,17 +73,16 @@ async def test_import_rejects_dataset_without_required_columns(client):
 
 
 async def test_status_and_list_endpoints(client):
-    project_id = (await client.post("/api/v1/projects", json={"name": "P"})).json()["id"]
-    await _import(client, project_id)
+    await _import(client)
 
-    status_body = (await client.get(f"/api/v1/projects/{project_id}/references/status")).json()
+    status_body = (await client.get("/api/v1/library/status")).json()
     assert status_body["total"] == 12
     # Seven rows ship with usable abstracts; the rest await enrichment.
     assert status_body["enriched"] == 7
     assert status_body["pending"] == 5
 
     listed = (
-        await client.get(f"/api/v1/projects/{project_id}/references?enrichment_status=PENDING")
+        await client.get("/api/v1/library?enrichment_status=PENDING")
     ).json()
     assert {r["title"] for r in listed} == {
         "Class Imbalance Strategies for Transaction Anomaly Detection",

@@ -7,7 +7,6 @@ that gets no further than Crossref stays INCOMPLETE — the recommendation
 engine then treats it as INSUFFICIENT_EVIDENCE rather than guessing.
 """
 
-import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -132,22 +131,23 @@ def enrich_reference(reference: ReferencePaper, chain: list[EnrichmentProviderCl
     reference.enriched_at = datetime.now(UTC)
 
 
-def enrich_project_references(session: Session, project_id: uuid.UUID) -> dict:
-    """Stage body: enrich every PENDING reference in the project.
+def enrich_pending_references(session: Session, limit: int | None = None) -> dict:
+    """Enrich every PENDING reference in the shared library.
 
     Idempotent — rows already ENRICHED/INCOMPLETE are skipped, so re-running
-    an analysis only picks up newly imported references.
+    only picks up references newly added since the last enrichment pass.
+    Runs on the library's own schedule (POST /library/refresh), not per
+    draft analysis, since enrichment cost belongs to the paper, not to
+    whichever draft happens to cite it.
     """
-    pending = list(
-        session.execute(
-            select(ReferencePaper)
-            .where(
-                ReferencePaper.project_id == project_id,
-                ReferencePaper.enrichment_status == EnrichmentStatus.PENDING,
-            )
-            .order_by(ReferencePaper.original_row_number)
-        ).scalars()
+    query = (
+        select(ReferencePaper)
+        .where(ReferencePaper.enrichment_status == EnrichmentStatus.PENDING)
+        .order_by(ReferencePaper.created_at)
     )
+    if limit is not None:
+        query = query.limit(limit)
+    pending = list(session.execute(query).scalars())
     if not pending:
         return {"enriched": 0, "incomplete": 0, "failed": 0}
 

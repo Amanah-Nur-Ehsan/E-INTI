@@ -14,12 +14,12 @@ from app.db.models.enums import EnrichmentStatus
 from app.schemas.analysis import ClaimCounts, ReferenceCounts
 
 
-async def reference_counts(session: AsyncSession, project_id: uuid.UUID) -> ReferenceCounts:
+async def reference_counts(session: AsyncSession) -> ReferenceCounts:
     rows = (
         await session.execute(
-            select(ReferencePaper.enrichment_status, func.count())
-            .where(ReferencePaper.project_id == project_id)
-            .group_by(ReferencePaper.enrichment_status)
+            select(ReferencePaper.enrichment_status, func.count()).group_by(
+                ReferencePaper.enrichment_status
+            )
         )
     ).all()
     by_status = {status: count for status, count in rows}
@@ -28,10 +28,7 @@ async def reference_counts(session: AsyncSession, project_id: uuid.UUID) -> Refe
         await session.execute(
             select(func.count())
             .select_from(ReferencePaper)
-            .where(
-                ReferencePaper.project_id == project_id,
-                ReferencePaper.embedding.isnot(None),
-            )
+            .where(ReferencePaper.embedding.isnot(None))
         )
     ).scalar_one()
 
