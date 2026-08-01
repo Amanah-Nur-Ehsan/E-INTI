@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.db.models import Claim, Draft
 from app.db.models.enums import ClaimType, DetectionMethod, ExistingCitationStatus
@@ -24,8 +25,6 @@ from app.services.draft_parser_service import Sentence, local_context
 from app.services.llm_client import LLMOutputError, Tier, get_llm_client
 
 log = get_logger(__name__)
-
-BATCH_SIZE = 10
 
 # --------------------------------------------------------------------------
 # Layer 3: existing citation syntax
@@ -324,9 +323,10 @@ def detect_and_store_claims(session: Session, draft_id: uuid.UUID) -> dict:
         if record["prefilter"].verdict is not PrefilterVerdict.SKIP:
             to_classify.append((index, sentence, context))
 
+    batch_size = get_settings().classify_batch_size
     llm_calls = 0
-    for start in range(0, len(to_classify), BATCH_SIZE):
-        batch = to_classify[start : start + BATCH_SIZE]
+    for start in range(0, len(to_classify), batch_size):
+        batch = to_classify[start : start + batch_size]
         decisions = classify_batch(client, batch, draft_title)
         llm_calls += 1
         for idx, decision in decisions.items():

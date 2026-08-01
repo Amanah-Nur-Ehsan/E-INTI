@@ -11,12 +11,28 @@ Every call is validated against a Pydantic schema with exactly one repair
 retry before the caller is told it failed. Callers must degrade gracefully
 rather than inventing a result — an unavailable verifier yields the SKIPPED
 verdict, never a fabricated SUPPORTED.
+
+Transport concerns (429s, timeouts, transient 5xx) are handled one layer
+below `complete_structured`, in `_call_groq_with_retry`, so a rate limit
+can never consume the JSON-repair retry above it -- those are two
+independent kinds of failure and mixing them was the original bug: a 429
+landed in a bare `except Exception` that `break`s after one HTTP attempt.
 """
 
 import json
+import re
+import time
 from enum import StrEnum
+from functools import lru_cache
 from typing import Protocol, TypeVar
 
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    InternalServerError,
+    RateLimitError,
+)
 from pydantic import BaseModel, ValidationError
 
 from app.core.config import get_settings
@@ -26,6 +42,11 @@ log = get_logger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
+#: Status codes worth retrying. Anything else (400/401/404/422...) is our
+#: bug, not a transient condition, and burning attempts on it just delays
+#: the real error.
+_RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+
 
 class Tier(StrEnum):
     CLASSIFY = "classify"
@@ -34,6 +55,10 @@ class Tier(StrEnum):
 
 class LLMOutputError(RuntimeError):
     """The model never produced output matching the requested schema."""
+
+
+class LLMRateLimited(RuntimeError):
+    """Groq kept failing (429 or transient 5xx/timeout) after every retry."""
 
 
 class LLMClient(Protocol):
@@ -56,20 +81,66 @@ def _extract_json(text: str) -> str:
     return cleaned
 
 
+_DURATION_RE = re.compile(r"(\d+(?:\.\d+)?)(ms|s|m|h)")
+_DURATION_UNITS = {"ms": 0.001, "s": 1.0, "m": 60.0, "h": 3600.0}
+
+
+def _parse_groq_duration(value: str | None) -> float | None:
+    """Groq's x-ratelimit-reset-* headers are duration strings like
+    '7.66s', '2m59.56s', or '120ms' -- unlike Scopus's epoch-seconds
+    X-RateLimit-Reset. Sum every (number, unit) pair found.
+    """
+    if not value:
+        return None
+    parts = _DURATION_RE.findall(value)
+    if not parts:
+        return None
+    return sum(float(n) * _DURATION_UNITS[u] for n, u in parts)
+
+
+def _to_int(value: str | None) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except ValueError:
+        return None
+
+
+def _retry_after_seconds(exc: APIStatusError) -> float | None:
+    headers = getattr(getattr(exc, "response", None), "headers", None)
+    if not headers:
+        return None
+    raw = headers.get("retry-after")
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return _parse_groq_duration(raw)
+
+
 class GroqGeminiClient:
-    """Groq primary with a Gemini fallback for the verification tier."""
+    """Groq primary with a Gemini fallback for both tiers."""
+
+    #: Below this many requests or tokens remaining, sleep until Groq's
+    #: window resets rather than wait to be told via a 429.
+    _RATE_LIMIT_FLOOR_REQUESTS = 2
+    _RATE_LIMIT_FLOOR_TOKENS = 2000
 
     def __init__(self) -> None:
         self.settings = get_settings()
         self._groq = None
         self._gemini = None
+        self._last_request_at = 0.0
 
     def _groq_client(self):
         if self._groq is None:
             from openai import OpenAI
 
             self._groq = OpenAI(
-                api_key=self.settings.groq_api_key, base_url=self.settings.groq_base_url
+                api_key=self.settings.groq_api_key,
+                base_url=self.settings.groq_base_url,
+                max_retries=0,  # we own retries -- the SDK default would fight our loop
+                timeout=self.settings.llm_timeout_seconds,
             )
         return self._groq
 
@@ -83,8 +154,39 @@ class GroqGeminiClient:
     def _model_for(self, tier: Tier) -> str:
         return self.settings.tier1_model if tier is Tier.CLASSIFY else self.settings.tier2_model
 
+    def _pace(self) -> None:
+        elapsed = time.monotonic() - self._last_request_at
+        floor = self.settings.llm_min_seconds_between_requests
+        if elapsed < floor:
+            time.sleep(floor - elapsed)
+
+    def _observe_rate_limit(self, headers) -> None:
+        """Mirrors scopus_service._observe_rate_limit: sleep proactively
+        when Groq's own quota headers say we're close to the edge, rather
+        than waiting for the 429 that would otherwise arrive next call.
+        """
+        requests_left = _to_int(headers.get("x-ratelimit-remaining-requests"))
+        tokens_left = _to_int(headers.get("x-ratelimit-remaining-tokens"))
+
+        wait: float | None = None
+        if requests_left is not None and requests_left <= self._RATE_LIMIT_FLOOR_REQUESTS:
+            wait = _parse_groq_duration(headers.get("x-ratelimit-reset-requests"))
+        elif tokens_left is not None and tokens_left <= self._RATE_LIMIT_FLOOR_TOKENS:
+            wait = _parse_groq_duration(headers.get("x-ratelimit-reset-tokens"))
+
+        if wait:
+            wait = min(wait, self.settings.llm_max_backoff_seconds)
+            log.warning(
+                "groq_quota_low",
+                requests_left=requests_left,
+                tokens_left=tokens_left,
+                sleeping_for=round(wait, 1),
+            )
+            time.sleep(wait)
+
     def _call_groq(self, tier: Tier, system: str, user: str) -> str:
-        response = self._groq_client().chat.completions.create(
+        self._pace()
+        raw = self._groq_client().chat.completions.with_raw_response.create(
             model=self._model_for(tier),
             messages=[
                 {"role": "system", "content": system},
@@ -93,7 +195,52 @@ class GroqGeminiClient:
             response_format={"type": "json_object"},
             temperature=0.0,
         )
-        return response.choices[0].message.content or ""
+        self._last_request_at = time.monotonic()
+        self._observe_rate_limit(raw.headers)
+        return raw.parse().choices[0].message.content or ""
+
+    def _call_groq_with_retry(self, tier: Tier, system: str, user: str) -> str:
+        """The transport retry loop: 429s, timeouts, and transient 5xx are
+        all handled here, honoring Retry-After where Groq sends one and
+        backing off exponentially otherwise. A 4xx that isn't 429 is our
+        bug -- it's re-raised immediately rather than retried.
+        """
+        delay = self.settings.llm_retry_base_seconds
+        last: Exception | None = None
+
+        for attempt in range(1, self.settings.llm_max_attempts + 1):
+            try:
+                return self._call_groq(tier, system, user)
+            except RateLimitError as exc:
+                wait = _retry_after_seconds(exc) or delay
+                wait = min(wait, self.settings.llm_max_backoff_seconds)
+                log.warning(
+                    "groq_rate_limited", tier=str(tier), attempt=attempt, sleeping_for=round(wait, 1)
+                )
+                time.sleep(wait)
+                delay = min(delay * 2, self.settings.llm_max_backoff_seconds)
+                last = exc
+            except (APITimeoutError, APIConnectionError, InternalServerError) as exc:
+                log.warning("groq_transport_error", tier=str(tier), attempt=attempt, error=str(exc))
+                time.sleep(delay)
+                delay = min(delay * 2, self.settings.llm_max_backoff_seconds)
+                last = exc
+            except APIStatusError as exc:
+                if exc.status_code not in _RETRYABLE_STATUS:
+                    raise
+                log.warning(
+                    "groq_retryable_status",
+                    tier=str(tier),
+                    attempt=attempt,
+                    status=exc.status_code,
+                )
+                time.sleep(delay)
+                delay = min(delay * 2, self.settings.llm_max_backoff_seconds)
+                last = exc
+
+        raise LLMRateLimited(
+            f"Groq exhausted {self.settings.llm_max_attempts} attempts for {tier}"
+        ) from last
 
     def _call_gemini(self, system: str, user: str, schema: type[T]) -> T:
         response = self._gemini_client().models.generate_content(
@@ -113,7 +260,7 @@ class GroqGeminiClient:
 
         for attempt in (1, 2):
             try:
-                raw = self._call_groq(tier, system, prompt)
+                raw = self._call_groq_with_retry(tier, system, prompt)
                 return schema.model_validate_json(_extract_json(raw))
             except ValidationError as exc:
                 last_error = exc
@@ -124,23 +271,35 @@ class GroqGeminiClient:
                         f"{user}\n\nYour previous response did not match the required schema:\n"
                         f"{exc}\n\nReturn only valid JSON matching the schema."
                     )
+            except LLMRateLimited as exc:
+                # A rate limit cannot be fixed by re-prompting -- go straight
+                # to the fallback rather than spending the repair attempt.
+                last_error = exc
+                break
             except Exception as exc:
                 last_error = exc
                 log.warning("llm_call_failed", tier=str(tier), attempt=attempt, error=str(exc))
                 break
 
-        if tier is Tier.VERIFY and self.settings.gemini_api_key:
+        if self.settings.gemini_api_key:
             try:
-                log.info("llm_falling_back_to_gemini")
+                log.info("llm_falling_back_to_gemini", tier=str(tier))
                 return self._call_gemini(system, user, schema)
             except Exception as exc:
                 last_error = exc
-                log.warning("gemini_fallback_failed", error=str(exc))
+                log.warning("gemini_fallback_failed", tier=str(tier), error=str(exc))
 
         raise LLMOutputError(f"{tier} call failed: {last_error}") from last_error
 
 
+@lru_cache
 def get_llm_client() -> LLMClient:
+    """Cached so `_last_request_at` (the pacing state) persists across the
+    many calls one analysis run makes -- a fresh client per call would
+    reset pacing every time and make it a no-op. Tests that toggle
+    settings must call `get_llm_client.cache_clear()` alongside
+    `get_settings.cache_clear()`.
+    """
     settings = get_settings()
     if settings.llm_mocked:
         from app.services.mocks.mock_llm import MockLLMClient

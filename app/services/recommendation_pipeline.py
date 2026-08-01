@@ -5,6 +5,7 @@ import uuid
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.db.models import CitationRecommendation, Claim, Project
 from app.db.models.enums import Verdict
@@ -21,8 +22,6 @@ from app.services.scoring import compute_score
 from app.services.verification_service import verify_candidates
 
 log = get_logger(__name__)
-
-TOP_N = 5
 
 
 def recommend_for_claim(
@@ -57,18 +56,29 @@ def recommend_for_claim(
     pairs = [build_pair(claim.local_context, c.title, c.abstract) for c in candidates]
     reranker_scores = reranker.score(pairs)
 
-    # Stage 4: semantic support verification (cached).
+    # Sort by reranker score before slicing -- candidates/reranker_scores are
+    # zipped in *prerank* order, so slicing candidates[:n] directly would
+    # verify the wrong subset (the top-n by prerank, not by reranker).
+    ranked = sorted(
+        zip(candidates, reranker_scores, strict=True), key=lambda pair: pair[1], reverse=True
+    )
+    top = ranked[: get_settings().verify_limit]
+
+    # Stage 4: semantic support verification (cached). Verifying only the
+    # top VERIFY_LIMIT (not every reranked candidate) is what keeps a
+    # single claim from costing 10 Tier-2 calls when only a handful are
+    # ever going to be shown.
     outcomes = verify_candidates(
         session,
         claim_text=claim.claim_text or claim.sentence_text,
         claim_context=claim.local_context,
         claim_hash=claim.claim_hash or "",
-        candidates=candidates,
+        candidates=[candidate for candidate, _ in top],
     )
 
     # Stage 5: final score with caps.
     scored = []
-    for candidate, reranker_score in zip(candidates, reranker_scores, strict=True):
+    for candidate, reranker_score in top:
         outcome = outcomes[candidate.reference_id]
         breakdown = compute_score(
             semantic_similarity=candidate.semantic_similarity,
@@ -81,12 +91,14 @@ def recommend_for_claim(
         )
         scored.append((candidate, outcome, breakdown))
 
+    # Every candidate here was verified, so all scores share the same basis
+    # -- unlike before, this sort never mixes verified and unverified rows.
     scored.sort(key=lambda item: item[2].score_percentage, reverse=True)
 
     session.execute(
         delete(CitationRecommendation).where(CitationRecommendation.claim_id == claim.id)
     )
-    for rank, (candidate, outcome, breakdown) in enumerate(scored[:TOP_N], start=1):
+    for rank, (candidate, outcome, breakdown) in enumerate(scored, start=1):
         session.add(
             CitationRecommendation(
                 claim_id=claim.id,
@@ -109,7 +121,7 @@ def recommend_for_claim(
         )
 
     session.commit()
-    return min(len(scored), TOP_N)
+    return len(scored)
 
 
 def recommend_for_draft(session: Session, project_id: uuid.UUID, draft_id: uuid.UUID) -> dict:

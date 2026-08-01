@@ -42,6 +42,19 @@ class Settings(BaseSettings):
     tier2_model: str = "llama-3.3-70b-versatile"
     gemini_fallback_model: str = "gemini-2.5-flash"
 
+    # LLM pacing and rate limiting. Groq's free tier is roughly 30 RPM per
+    # model; 2.1s between calls gives ~5% headroom under a 2.0s/call
+    # ceiling, which makes a 429 rare rather than merely survivable.
+    llm_min_seconds_between_requests: float = 2.1
+    llm_max_attempts: int = 5
+    llm_retry_base_seconds: float = 2.0
+    llm_max_backoff_seconds: float = 60.0
+    llm_timeout_seconds: float = 60.0
+    #: Tier-2 verification calls per claim (was: all 10 reranked candidates).
+    verify_limit: int = 3
+    #: Sentences per Tier-1 classification call.
+    classify_batch_size: int = 10
+
     # Misc
     upload_dir: Path = Path("./uploads")
     celery_task_always_eager: bool = False
