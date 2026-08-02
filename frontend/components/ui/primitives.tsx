@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes, HTMLAttributes } from "react";
 
-function cx(...classes: Array<string | false | undefined>) {
+export function cx(...classes: Array<string | false | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 

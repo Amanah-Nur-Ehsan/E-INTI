@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ReferenceRow } from "@/components/ReferenceRow";
-import { Badge, Button, Card, Spinner } from "@/components/ui/primitives";
+import { Badge, Button, Card, Spinner, cx } from "@/components/ui/primitives";
 import { downloadUrl } from "@/lib/api/client";
 import {
   useAnalysisStatus,
@@ -45,39 +45,45 @@ function LibraryStrip() {
       </button>
       {open && (
         <div className="mt-3 flex flex-col gap-3 border-t border-zinc-100 pt-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="text-xs text-zinc-600">
-              Import references (xlsx, csv)
-              <input
-                type="file"
-                accept=".xlsx,.xlsm,.xls,.csv,.tsv,.txt"
-                className="mt-1 block text-xs"
-                onChange={(e) => {
-                  setSelectedFile(e.target.files?.[0] ?? null);
-                  importLibrary.reset();
+          <div className="flex flex-col gap-2">
+            <span className="text-xs text-zinc-600">Import references (xlsx, csv)</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="cursor-pointer rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-900 hover:bg-zinc-50">
+                Choose file
+                <input
+                  type="file"
+                  accept=".xlsx,.xlsm,.xls,.csv,.tsv,.txt"
+                  className="sr-only"
+                  onChange={(e) => {
+                    setSelectedFile(e.target.files?.[0] ?? null);
+                    importLibrary.reset();
+                  }}
+                />
+              </label>
+              <span className="text-xs text-zinc-500">
+                {selectedFile ? selectedFile.name : "No file chosen"}
+              </span>
+              <Button
+                size="sm"
+                disabled={!selectedFile || importLibrary.isPending}
+                onClick={() => {
+                  if (!selectedFile) return;
+                  importLibrary.mutate(selectedFile, {
+                    onSuccess: () => setSelectedFile(null),
+                  });
                 }}
-              />
-            </label>
-            <Button
-              size="sm"
-              disabled={!selectedFile || importLibrary.isPending}
-              onClick={() => {
-                if (!selectedFile) return;
-                importLibrary.mutate(selectedFile, {
-                  onSuccess: () => setSelectedFile(null),
-                });
-              }}
-            >
-              {importLibrary.isPending ? "Importing…" : "Import"}
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={refreshLibrary.isPending}
-              onClick={() => refreshLibrary.mutate()}
-            >
-              {refreshLibrary.isPending ? "Enriching…" : "Enrich pending"}
-            </Button>
+              >
+                {importLibrary.isPending ? "Importing…" : "Import"}
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={refreshLibrary.isPending}
+                onClick={() => refreshLibrary.mutate()}
+              >
+                {refreshLibrary.isPending ? "Enriching…" : "Enrich pending"}
+              </Button>
+            </div>
           </div>
 
           {importLibrary.isError && (
@@ -213,17 +219,29 @@ export default function Home() {
 
       <Card className="p-4">
         <h2 className="text-sm font-medium text-zinc-700">Upload paper</h2>
+        <p className="mt-1 text-xs text-zinc-500">Accepted formats: .docx, .md, .markdown, .txt</p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <input
-            type="file"
-            accept=".docx,.md,.markdown,.txt"
-            className="block text-sm"
-            disabled={uploadDraft.isPending}
-            onChange={(e) => {
-              setSelectedDraftFile(e.target.files?.[0] ?? null);
-              uploadDraft.reset();
-            }}
-          />
+          <label
+            className={cx(
+              "rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-900",
+              uploadDraft.isPending ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-zinc-50",
+            )}
+          >
+            Choose file
+            <input
+              type="file"
+              accept=".docx,.md,.markdown,.txt"
+              className="sr-only"
+              disabled={uploadDraft.isPending}
+              onChange={(e) => {
+                setSelectedDraftFile(e.target.files?.[0] ?? null);
+                uploadDraft.reset();
+              }}
+            />
+          </label>
+          <span className="text-xs text-zinc-500">
+            {selectedDraftFile ? selectedDraftFile.name : "No file chosen"}
+          </span>
           <Button size="sm" disabled={!selectedDraftFile || uploadDraft.isPending} onClick={handleUpload}>
             {uploadDraft.isPending ? "Uploading…" : "Upload"}
           </Button>
