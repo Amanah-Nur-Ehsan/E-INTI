@@ -1,15 +1,26 @@
 "use client";
 
-import { Badge, Button } from "@/components/ui/primitives";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import type { RecommendationRead } from "@/lib/api/hooks";
 
-const VERDICT_BADGE: Record<string, { label: string; tone: "green" | "yellow" | "red" | "gray" }> = {
-  SUPPORTED: { label: "Supported", tone: "green" },
-  PARTIALLY_SUPPORTED: { label: "Partially supported", tone: "yellow" },
-  TOPICALLY_RELATED_BUT_NOT_EVIDENCE: { label: "Topically related", tone: "yellow" },
-  INSUFFICIENT_EVIDENCE: { label: "Insufficient evidence", tone: "gray" },
-  CONTRADICTED: { label: "Contradicted", tone: "red" },
-  SKIPPED: { label: "Not verified", tone: "gray" },
+const VERDICT_BADGE: Record<string, { label: string; className: string }> = {
+  SUPPORTED: { label: "Supported", className: "bg-green-100 text-green-800 border-green-200" },
+  PARTIALLY_SUPPORTED: {
+    label: "Partially supported",
+    className: "bg-amber-100 text-amber-800 border-amber-200",
+  },
+  TOPICALLY_RELATED_BUT_NOT_EVIDENCE: {
+    label: "Topically related",
+    className: "bg-amber-100 text-amber-800 border-amber-200",
+  },
+  INSUFFICIENT_EVIDENCE: {
+    label: "Insufficient evidence",
+    className: "bg-zinc-100 text-zinc-600 border-zinc-200",
+  },
+  CONTRADICTED: { label: "Contradicted", className: "bg-red-100 text-red-800 border-red-200" },
+  SKIPPED: { label: "Not verified", className: "bg-zinc-100 text-zinc-600 border-zinc-200" },
 };
 
 function formatAuthors(authors: unknown[] | null): string {
@@ -36,16 +47,21 @@ export function ReferenceRow({
   isPending: boolean;
 }) {
   const { reference } = recommendation;
-  const badge = VERDICT_BADGE[recommendation.verdict] ?? { label: recommendation.verdict, tone: "gray" as const };
+  const badge = VERDICT_BADGE[recommendation.verdict] ?? {
+    label: recommendation.verdict,
+    className: "bg-zinc-100 text-zinc-600 border-zinc-200",
+  };
   const accepted = recommendation.user_decision === "ACCEPTED";
 
   return (
-    <div className="rounded-md border border-zinc-200 bg-white p-3">
+    <Card className="p-3">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-medium text-zinc-900">{reference.title}</p>
-        <Badge tone={badge.tone}>{badge.label}</Badge>
+        <p className="text-sm font-medium text-foreground">{reference.title}</p>
+        <Badge variant="outline" className={badge.className}>
+          {badge.label}
+        </Badge>
       </div>
-      <p className="mt-0.5 text-xs text-zinc-500">
+      <p className="mt-0.5 text-xs text-muted-foreground">
         {formatAuthors(reference.authors)} &middot; {reference.year ?? "n.d."}
         {reference.source_title ? ` · ${reference.source_title}` : ""}
         {" · "}
@@ -65,10 +81,15 @@ export function ReferenceRow({
             DOI
           </a>
         )}
-        <Button size="sm" variant={accepted ? "secondary" : "primary"} disabled={isPending || accepted} onClick={onUse}>
+        <Button
+          size="sm"
+          variant={accepted ? "secondary" : "default"}
+          disabled={isPending || accepted}
+          onClick={onUse}
+        >
           {accepted ? "Used" : "Use this"}
         </Button>
       </div>
-    </div>
+    </Card>
   );
 }

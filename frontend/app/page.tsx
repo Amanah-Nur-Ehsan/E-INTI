@@ -1,8 +1,11 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ReferenceRow } from "@/components/ReferenceRow";
-import { Badge, Button, Card, Spinner, cx } from "@/components/ui/primitives";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { downloadUrl } from "@/lib/api/client";
 import {
   useAnalysisStatus,
@@ -17,6 +20,40 @@ import {
   useUploadDraft,
 } from "@/lib/api/hooks";
 import { splitAroundSentence } from "@/lib/results";
+import { cn } from "@/lib/utils";
+
+function FilePicker({
+  file,
+  onSelect,
+  disabled,
+  accept,
+}: {
+  file: File | null;
+  onSelect: (file: File | null) => void;
+  disabled?: boolean;
+  accept: string;
+}) {
+  return (
+    <>
+      <label
+        className={cn(
+          "rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium text-foreground",
+          disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-muted",
+        )}
+      >
+        Choose file
+        <input
+          type="file"
+          accept={accept}
+          className="sr-only"
+          disabled={disabled}
+          onChange={(e) => onSelect(e.target.files?.[0] ?? null)}
+        />
+      </label>
+      <span className="text-xs text-muted-foreground">{file ? file.name : "No file chosen"}</span>
+    </>
+  );
+}
 
 function LibraryStrip() {
   const [open, setOpen] = useState(false);
@@ -32,37 +69,30 @@ function LibraryStrip() {
         className="flex w-full items-center justify-between text-left"
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="text-sm font-medium text-zinc-700">
+        <span className="text-sm font-medium text-foreground">
           Reference library
           {status ? (
-            <span className="ml-2 text-xs font-normal text-zinc-500">
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
               {status.total} total
               {status.pending > 0 ? ` · ${status.pending} pending enrichment` : ""}
             </span>
           ) : null}
         </span>
-        <span className="text-xs text-zinc-400">{open ? "Hide" : "Manage"}</span>
+        <span className="text-xs text-muted-foreground">{open ? "Hide" : "Manage"}</span>
       </button>
       {open && (
-        <div className="mt-3 flex flex-col gap-3 border-t border-zinc-100 pt-3">
+        <div className="mt-3 flex flex-col gap-3 border-t pt-3">
           <div className="flex flex-col gap-2">
-            <span className="text-xs text-zinc-600">Import references (xlsx, csv)</span>
+            <span className="text-xs text-muted-foreground">Import references (xlsx, csv)</span>
             <div className="flex flex-wrap items-center gap-2">
-              <label className="cursor-pointer rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-900 hover:bg-zinc-50">
-                Choose file
-                <input
-                  type="file"
-                  accept=".xlsx,.xlsm,.xls,.csv,.tsv,.txt"
-                  className="sr-only"
-                  onChange={(e) => {
-                    setSelectedFile(e.target.files?.[0] ?? null);
-                    importLibrary.reset();
-                  }}
-                />
-              </label>
-              <span className="text-xs text-zinc-500">
-                {selectedFile ? selectedFile.name : "No file chosen"}
-              </span>
+              <FilePicker
+                file={selectedFile}
+                onSelect={(f) => {
+                  setSelectedFile(f);
+                  importLibrary.reset();
+                }}
+                accept=".xlsx,.xlsm,.xls,.csv,.tsv,.txt"
+              />
               <Button
                 size="sm"
                 disabled={!selectedFile || importLibrary.isPending}
@@ -87,7 +117,7 @@ function LibraryStrip() {
           </div>
 
           {importLibrary.isError && (
-            <p className="text-xs text-red-600">
+            <p className="text-xs text-destructive">
               Import failed: {(importLibrary.error as Error).message}
             </p>
           )}
@@ -103,7 +133,7 @@ function LibraryStrip() {
             </p>
           )}
           {refreshLibrary.isError && (
-            <p className="text-xs text-red-600">
+            <p className="text-xs text-destructive">
               Enrich failed: {(refreshLibrary.error as Error).message}
             </p>
           )}
@@ -112,7 +142,7 @@ function LibraryStrip() {
           )}
 
           {status && (
-            <span className="text-xs text-zinc-500">
+            <span className="text-xs text-muted-foreground">
               enriched {status.enriched} · incomplete {status.incomplete} · failed {status.failed} ·
               embedded {status.embedded}
             </span>
@@ -145,12 +175,14 @@ function ClaimRow({
 
   return (
     <Card className="p-4">
-      {sectionTitle && <p className="text-xs font-medium uppercase text-zinc-400">{sectionTitle}</p>}
-      <p className="mt-1 text-sm leading-relaxed text-zinc-700">
+      {sectionTitle && (
+        <p className="text-xs font-medium uppercase text-muted-foreground">{sectionTitle}</p>
+      )}
+      <p className="mt-1 text-sm leading-relaxed text-foreground/90">
         {match ? (
           <>
             {before}
-            <strong className="font-semibold text-zinc-900">{match}</strong>
+            <strong className="font-semibold text-foreground">{match}</strong>
             {after}
           </>
         ) : (
@@ -159,7 +191,7 @@ function ClaimRow({
       </p>
       <div className="mt-3 space-y-2">
         {top.length === 0 ? (
-          <p className="text-xs text-zinc-400">No supporting reference found.</p>
+          <p className="text-xs text-muted-foreground">No supporting reference found.</p>
         ) : (
           top.map((rec) => (
             <ReferenceRow
@@ -208,8 +240,8 @@ export default function Home() {
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8">
       <header>
-        <h1 className="text-xl font-semibold text-zinc-900">CitationINTI</h1>
-        <p className="text-sm text-zinc-500">
+        <h1 className="text-xl font-semibold text-foreground">CitationINTI</h1>
+        <p className="text-sm text-muted-foreground">
           Upload a draft, find Scopus-indexed citations for its claims, and export a marked-up
           docx.
         </p>
@@ -218,41 +250,31 @@ export default function Home() {
       <LibraryStrip />
 
       <Card className="p-4">
-        <h2 className="text-sm font-medium text-zinc-700">Upload paper</h2>
-        <p className="mt-1 text-xs text-zinc-500">Accepted formats: .docx, .md, .markdown, .txt</p>
+        <h2 className="text-sm font-medium text-foreground">Upload paper</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Accepted formats: .docx, .md, .markdown, .txt
+        </p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <label
-            className={cx(
-              "rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-900",
-              uploadDraft.isPending ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-zinc-50",
-            )}
-          >
-            Choose file
-            <input
-              type="file"
-              accept=".docx,.md,.markdown,.txt"
-              className="sr-only"
-              disabled={uploadDraft.isPending}
-              onChange={(e) => {
-                setSelectedDraftFile(e.target.files?.[0] ?? null);
-                uploadDraft.reset();
-              }}
-            />
-          </label>
-          <span className="text-xs text-zinc-500">
-            {selectedDraftFile ? selectedDraftFile.name : "No file chosen"}
-          </span>
+          <FilePicker
+            file={selectedDraftFile}
+            onSelect={(f) => {
+              setSelectedDraftFile(f);
+              uploadDraft.reset();
+            }}
+            disabled={uploadDraft.isPending}
+            accept=".docx,.md,.markdown,.txt"
+          />
           <Button size="sm" disabled={!selectedDraftFile || uploadDraft.isPending} onClick={handleUpload}>
             {uploadDraft.isPending ? "Uploading…" : "Upload"}
           </Button>
         </div>
         {uploadDraft.isPending && (
-          <p className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
-            <Spinner className="h-3 w-3" /> Uploading…
+          <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" /> Uploading…
           </p>
         )}
         {uploadDraft.isError && (
-          <p className="mt-2 text-xs text-red-600">
+          <p className="mt-2 text-xs text-destructive">
             Upload failed: {(uploadDraft.error as Error).message}
           </p>
         )}
@@ -267,12 +289,21 @@ export default function Home() {
           </Button>
         )}
         {status && (
-          <div className="mt-3 flex items-center gap-2 text-xs text-zinc-500">
-            {isRunning && <Spinner className="h-3 w-3" />}
-            <Badge tone={isCompleted ? "green" : isRunning ? "blue" : "red"}>
+          <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+            {isRunning && <Loader2 className="h-3 w-3 animate-spin" />}
+            <Badge
+              variant="outline"
+              className={cn(
+                isCompleted
+                  ? "bg-green-100 text-green-800 border-green-200"
+                  : isRunning
+                    ? "bg-blue-100 text-blue-800 border-blue-200"
+                    : "bg-red-100 text-red-800 border-red-200",
+              )}
+            >
               {status.stage ?? status.status}
             </Badge>
-            {status.error && <span className="text-red-600">{status.error}</span>}
+            {status.error && <span className="text-destructive">{status.error}</span>}
           </div>
         )}
       </Card>
@@ -280,8 +311,10 @@ export default function Home() {
       {isCompleted && claims && (
         <section className="flex flex-col gap-4">
           {status?.sdg_number && (
-            <div className="flex items-center gap-2 text-xs text-zinc-500">
-              <Badge tone="blue">SDG {status.sdg_number}</Badge>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-200">
+                SDG {status.sdg_number}
+              </Badge>
               <span>
                 {status.sdg_name}
                 {status.sdg_keyword ? ` · ${status.sdg_keyword}` : ""}
@@ -289,7 +322,7 @@ export default function Home() {
             </div>
           )}
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-medium text-zinc-700">
+            <h2 className="text-sm font-medium text-foreground">
               Claims needing citation ({claims.length})
             </h2>
             {hasAcceptedCitation && (
@@ -313,7 +346,7 @@ export default function Home() {
           </div>
 
           {claims.length === 0 && (
-            <p className="text-sm text-zinc-500">No claims needing citation were found.</p>
+            <p className="text-sm text-muted-foreground">No claims needing citation were found.</p>
           )}
 
           {claims.map((claim) => (
