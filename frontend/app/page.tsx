@@ -211,10 +211,11 @@ function ClaimRow({
 export default function Home() {
   const [draftId, setDraftId] = useState<string | null>(null);
   const [selectedDraftFile, setSelectedDraftFile] = useState<File | null>(null);
+  const [hasStartedAnalysis, setHasStartedAnalysis] = useState(false);
 
   const uploadDraft = useUploadDraft();
   const runAnalysis = useRunAnalysis(draftId ?? "");
-  const { data: status } = useAnalysisStatus(draftId ?? "");
+  const { data: status } = useAnalysisStatus(draftId ?? "", hasStartedAnalysis);
   const { data: claims } = useClaims(draftId ?? "", true);
   const { data: recommendationsByClaim } = useRecommendationsByDraft(draftId ?? "");
   const setDecision = useSetDecision(draftId ?? "");
@@ -234,6 +235,7 @@ export default function Home() {
     if (!selectedDraftFile) return;
     const draft = await uploadDraft.mutateAsync(selectedDraftFile);
     setSelectedDraftFile(null);
+    setHasStartedAnalysis(false);
     setDraftId(draft.id);
   }
 
@@ -283,7 +285,10 @@ export default function Home() {
             size="sm"
             className="mt-3"
             disabled={runAnalysis.isPending}
-            onClick={() => runAnalysis.mutate()}
+            onClick={() => {
+              setHasStartedAnalysis(true);
+              runAnalysis.mutate();
+            }}
           >
             {runAnalysis.isPending ? "Starting…" : "Run analysis"}
           </Button>

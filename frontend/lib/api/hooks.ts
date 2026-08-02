@@ -73,14 +73,17 @@ export function useRunAnalysis(draftId: string) {
   });
 }
 
-export function useAnalysisStatus(draftId: string) {
+export function useAnalysisStatus(draftId: string, enabled = true) {
   return useQuery({
     queryKey: ["drafts", draftId, "analysis-status"],
     queryFn: () =>
       api.get("/api/v1/drafts/{draft_id}/analysis/status", {
         params: { draft_id: draftId },
       }),
-    enabled: Boolean(draftId),
+    // No analysis run exists until the user clicks "Run analysis" -- polling
+    // before that always 404s (expected, not an error), so callers gate this
+    // on having actually triggered a run instead of just having a draft id.
+    enabled: Boolean(draftId) && enabled,
     retry: false,
     refetchInterval: (query) => {
       const data = query.state.data as AnalysisRunStatus | undefined;
