@@ -30,7 +30,7 @@ SDG_SYSTEM = (
     "that were found in the paper's text. Pick the single goal the paper "
     "is most centrally about, and the one keyword from that goal's list "
     "that best represents the match. Only use a goal number and keyword "
-    "from the shortlist below -- never invent one."
+    "from the shortlist below -- never invent one. Return JSON only."
 )
 
 SDG_USER_TEMPLATE = """Paper text (excerpt):
