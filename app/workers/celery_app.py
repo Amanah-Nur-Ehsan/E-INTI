@@ -12,6 +12,7 @@ celery_app = Celery(
     include=[
         "app.workers.tasks.refresh_library",
         "app.workers.tasks.parse_draft",
+        "app.workers.tasks.classify_sdg",
         "app.workers.tasks.detect_claims",
         "app.workers.tasks.generate_recommendations",
     ],

@@ -21,6 +21,7 @@ def build_analysis_chain(run_id: uuid.UUID):
     POST /library/refresh, since that cost belongs to the paper, not to
     whichever draft happens to cite it.
     """
+    from app.workers.tasks.classify_sdg import classify_sdg
     from app.workers.tasks.detect_claims import detect_claims
     from app.workers.tasks.generate_recommendations import generate_recommendations
     from app.workers.tasks.parse_draft import parse_draft
@@ -28,6 +29,7 @@ def build_analysis_chain(run_id: uuid.UUID):
     rid = str(run_id)
     return chain(
         parse_draft.si(rid),
+        classify_sdg.si(rid),
         detect_claims.si(rid),
         generate_recommendations.si(rid),
     )
