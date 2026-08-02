@@ -54,6 +54,13 @@ class MockLLMClient:
 
     def complete_structured(self, *, tier: Tier, system: str, user: str, schema: type[BaseModel]):
         self.calls[tier] = self.calls.get(tier, 0) + 1
+        from app.services.sdg_classification_service import SDGPick
+
+        # SDG classification also runs at Tier.CLASSIFY (same cheap model
+        # tier as claim classification) but with a distinct schema, so
+        # dispatch on schema identity rather than tier alone.
+        if schema is SDGPick:
+            return self._classify_sdg(user, schema)
         if tier is Tier.CLASSIFY:
             return self._classify(user, schema)
         return self._verify(user, schema)
@@ -83,6 +90,22 @@ class MockLLMClient:
                 }
             )
         return schema.model_validate({"decisions": decisions})
+
+    # -- SDG classification ------------------------------------------------
+    def _classify_sdg(self, user: str, schema: type[BaseModel]):
+        """Deterministic stand-in: always pick the first (top-ranked)
+        candidate the prefilter shortlisted, and its first matched keyword.
+        """
+        match = re.search(r"^(\d+): (.+?) -- (.*)$", user, re.MULTILINE)
+        if not match:
+            return schema.model_validate({"goal_number": 1, "keyword": None})
+
+        goal_number = int(match.group(1))
+        keywords_part = match.group(3).strip()
+        keyword = None
+        if not keywords_part.startswith("(no keyword match"):
+            keyword = keywords_part.split(",")[0].strip()
+        return schema.model_validate({"goal_number": goal_number, "keyword": keyword})
 
     @staticmethod
     def _claim_type(signals: list[str], needs: bool) -> str:
