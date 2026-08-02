@@ -45,10 +45,10 @@ function LibraryStrip() {
       {open && (
         <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-zinc-100 pt-3">
           <label className="text-xs text-zinc-600">
-            Import references (CSV)
+            Import references (xlsx, csv)
             <input
               type="file"
-              accept=".csv"
+              accept=".xlsx,.xlsm,.xls,.csv,.tsv,.txt"
               className="mt-1 block text-xs"
               onChange={(e) => {
                 const file = e.target.files?.[0];
@@ -172,7 +172,7 @@ export default function Home() {
         <h2 className="text-sm font-medium text-zinc-700">Upload paper</h2>
         <input
           type="file"
-          accept=".docx,.doc,.pdf,.txt"
+          accept=".docx,.md,.markdown,.txt"
           className="mt-2 block text-sm"
           disabled={uploadDraft.isPending}
           onChange={(e) => {
