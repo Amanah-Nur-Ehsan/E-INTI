@@ -234,9 +234,15 @@ export default function Home() {
   async function handleUpload() {
     if (!selectedDraftFile) return;
     const draft = await uploadDraft.mutateAsync(selectedDraftFile);
-    setSelectedDraftFile(null);
     setHasStartedAnalysis(false);
     setDraftId(draft.id);
+  }
+
+  function handleReset() {
+    setDraftId(null);
+    setSelectedDraftFile(null);
+    setHasStartedAnalysis(false);
+    uploadDraft.reset();
   }
 
   return (
@@ -256,29 +262,43 @@ export default function Home() {
         <p className="mt-1 text-xs text-muted-foreground">
           Accepted formats: .docx, .md, .markdown, .txt
         </p>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <FilePicker
-            file={selectedDraftFile}
-            onSelect={(f) => {
-              setSelectedDraftFile(f);
-              uploadDraft.reset();
-            }}
-            disabled={uploadDraft.isPending}
-            accept=".docx,.md,.markdown,.txt"
-          />
-          <Button size="sm" disabled={!selectedDraftFile || uploadDraft.isPending} onClick={handleUpload}>
-            {uploadDraft.isPending ? "Uploading…" : "Upload"}
-          </Button>
-        </div>
-        {uploadDraft.isPending && (
-          <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="h-3 w-3 animate-spin" /> Uploading…
-          </p>
-        )}
-        {uploadDraft.isError && (
-          <p className="mt-2 text-xs text-destructive">
-            Upload failed: {(uploadDraft.error as Error).message}
-          </p>
+        {draftId ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+              Uploaded
+            </Badge>
+            <span className="text-foreground">{selectedDraftFile?.name}</span>
+            <Button size="sm" variant="ghost" onClick={handleReset}>
+              Upload a different paper
+            </Button>
+          </div>
+        ) : (
+          <>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <FilePicker
+                file={selectedDraftFile}
+                onSelect={(f) => {
+                  setSelectedDraftFile(f);
+                  uploadDraft.reset();
+                }}
+                disabled={uploadDraft.isPending}
+                accept=".docx,.md,.markdown,.txt"
+              />
+              <Button size="sm" disabled={!selectedDraftFile || uploadDraft.isPending} onClick={handleUpload}>
+                {uploadDraft.isPending ? "Uploading…" : "Upload"}
+              </Button>
+            </div>
+            {uploadDraft.isPending && (
+              <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" /> Uploading…
+              </p>
+            )}
+            {uploadDraft.isError && (
+              <p className="mt-2 text-xs text-destructive">
+                Upload failed: {(uploadDraft.error as Error).message}
+              </p>
+            )}
+          </>
         )}
         {draftId && !status && (
           <Button
