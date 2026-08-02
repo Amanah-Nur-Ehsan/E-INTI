@@ -8,12 +8,24 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+#: Not 3000. An unrelated nginx on this machine listens on 3000 and
+#: proxy_passes to localhost:3000 (itself), with `root html;` as the
+#: fallback -- so page HTML proxies through but /_next/static/* 404s.
+#: The result is a page with no CSS and no hydration: unstyled, and every
+#: button silently does nothing. Override with WEB_PORT=... if 3100 is
+#: also taken.
+WEB_PORT="${WEB_PORT:-3100}"
+
 docker compose up -d postgres redis
 
 ( uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 2>&1 | sed -u 's/^/[api]    /' ) &
 ( PYTORCH_ENABLE_MPS_FALLBACK=1 uv run celery -A app.workers.celery_app worker \
     --loglevel=info --pool=solo 2>&1 | sed -u 's/^/[worker] /' ) &
-( cd frontend && npm run dev 2>&1 | sed -u 's/^/[web]    /' ) &
+( cd frontend && npm run dev -- -p "$WEB_PORT" 2>&1 | sed -u 's/^/[web]    /' ) &
+
+echo ""
+echo "  ==> open http://localhost:${WEB_PORT}"
+echo ""
 
 cleanup() {
     # The pkill fallbacks catch processes that fork outside this script's

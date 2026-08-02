@@ -46,7 +46,7 @@ fixtures:
 	uv run python scripts/make_fixtures.py
 
 web:
-	cd frontend && npm run dev
+	cd frontend && npm run dev -- -p $(or $(WEB_PORT),3100)
 
 # Regenerate the typed API client from the running backend's OpenAPI schema.
 # Requires `make api` running in another terminal.

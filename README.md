@@ -66,6 +66,14 @@ this API must not be exposed to untrusted networks as-is.
 ## Running
 
 ```bash
+make dev       # containers + API + worker + frontend, one terminal, Ctrl+C stops all
+```
+
+Then open **http://localhost:3100**.
+
+Or run each piece in its own terminal:
+
+```bash
 make api       # FastAPI on http://localhost:8000 (docs at /docs)
 make worker    # Celery worker — run this on the host, not in Docker
 ```
@@ -76,8 +84,15 @@ slower. It uses `--pool=solo` because forking a process that has already
 initialised MPS is crash-prone.
 
 ```bash
-make web       # Next.js on http://localhost:3000, proxying /api/* to the backend
+make web       # Next.js on http://localhost:3100, proxying /api/* to the backend
 ```
+
+**The frontend deliberately does not use port 3000.** A common source of
+confusion: if something else on the machine (an nginx, another dev server)
+already holds 3000, Next.js still starts, but page HTML gets served while
+`/_next/static/*` 404s — the page renders completely unstyled and no button
+works, because React never hydrates. Port 3100 sidesteps it; override with
+`WEB_PORT=3200 make dev` if 3100 is taken too.
 
 The frontend is a separate `npm` project in `frontend/` — no Docker container for
 it, since the API and worker already run on the host for MPS and a Node container
