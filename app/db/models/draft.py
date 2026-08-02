@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Text
+from sqlalchemy import DateTime, Integer, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -26,6 +26,14 @@ class Draft(UUIDPrimaryKey, TimestampMixin, Base):
     )
     parse_error: Mapped[str | None] = mapped_column(Text)
     parsed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    #: One SDG (1-17) classified for the whole paper, set once during
+    #: analysis. sdg_keyword is the specific keyword phrase (from
+    #: app/data/sdg_goals.json) the LLM grounded its pick in -- see
+    #: app/services/sdg_classification_service.py.
+    sdg_number: Mapped[int | None] = mapped_column(Integer)
+    sdg_name: Mapped[str | None] = mapped_column(Text)
+    sdg_keyword: Mapped[str | None] = mapped_column(Text)
 
     claims: Mapped[list["Claim"]] = relationship(  # noqa: F821
         back_populates="draft", cascade="all, delete-orphan"
