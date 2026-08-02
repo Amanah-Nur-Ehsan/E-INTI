@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import func, select
 
 from app.api.deps import DraftDep, SessionDep
-from app.db.models import AnalysisRun, ReferencePaper
+from app.db.models import AnalysisRun, Draft, ReferencePaper
 from app.db.models.enums import RunStatus
 from app.schemas.analysis import AnalysisRunAccepted, AnalysisRunStatus, DraftSummary
 from app.services.progress import accepted_citation_counts, claim_counts, reference_counts
@@ -95,6 +95,7 @@ async def _latest_run(session, draft_id: uuid.UUID) -> AnalysisRun | None:
 async def _build_run_status(session, run: AnalysisRun) -> AnalysisRunStatus:
     # The worker writes through a different connection; expire to read fresh state.
     await session.refresh(run)
+    draft = await session.get(Draft, run.draft_id)
     return AnalysisRunStatus(
         run_id=run.id,
         draft_id=run.draft_id,
@@ -105,6 +106,9 @@ async def _build_run_status(session, run: AnalysisRun) -> AnalysisRunStatus:
         finished_at=run.finished_at,
         references=await reference_counts(session),
         claims=await claim_counts(session, run.draft_id),
+        sdg_number=draft.sdg_number if draft else None,
+        sdg_name=draft.sdg_name if draft else None,
+        sdg_keyword=draft.sdg_keyword if draft else None,
     )
 
 

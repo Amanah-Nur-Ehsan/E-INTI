@@ -29,6 +29,10 @@ class AnalysisRunStatus(BaseModel):
     finished_at: datetime | None
     references: ReferenceCounts
     claims: ClaimCounts
+    #: Set once the CLASSIFYING_SDG stage completes; null before then.
+    sdg_number: int | None = None
+    sdg_name: str | None = None
+    sdg_keyword: str | None = None
 
 
 class AnalysisRunAccepted(BaseModel):
