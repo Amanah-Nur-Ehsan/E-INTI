@@ -409,6 +409,12 @@ export interface components {
             finished_at: string | null;
             references: components["schemas"]["ReferenceCounts"];
             claims: components["schemas"]["ClaimCounts"];
+            /** Sdg Number */
+            sdg_number?: number | null;
+            /** Sdg Name */
+            sdg_name?: string | null;
+            /** Sdg Keyword */
+            sdg_keyword?: string | null;
         };
         /** Body_import_references_api_v1_library_import_post */
         Body_import_references_api_v1_library_import_post: {

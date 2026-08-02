@@ -209,6 +209,15 @@ export default function Home() {
 
       {isCompleted && claims && (
         <section className="flex flex-col gap-4">
+          {status?.sdg_number && (
+            <div className="flex items-center gap-2 text-xs text-zinc-500">
+              <Badge tone="blue">SDG {status.sdg_number}</Badge>
+              <span>
+                {status.sdg_name}
+                {status.sdg_keyword ? ` · ${status.sdg_keyword}` : ""}
+              </span>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-medium text-zinc-700">
               Claims needing citation ({claims.length})
