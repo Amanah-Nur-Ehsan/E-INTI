@@ -20,6 +20,7 @@ import { splitAroundSentence } from "@/lib/results";
 
 function LibraryStrip() {
   const [open, setOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const { data: status } = useLibraryStatus();
   const importLibrary = useImportLibrary();
   const refreshLibrary = useRefreshLibrary();
@@ -43,28 +44,67 @@ function LibraryStrip() {
         <span className="text-xs text-zinc-400">{open ? "Hide" : "Manage"}</span>
       </button>
       {open && (
-        <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-zinc-100 pt-3">
-          <label className="text-xs text-zinc-600">
-            Import references (xlsx, csv)
-            <input
-              type="file"
-              accept=".xlsx,.xlsm,.xls,.csv,.tsv,.txt"
-              className="mt-1 block text-xs"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) importLibrary.mutate(file);
-                e.target.value = "";
+        <div className="mt-3 flex flex-col gap-3 border-t border-zinc-100 pt-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-xs text-zinc-600">
+              Import references (xlsx, csv)
+              <input
+                type="file"
+                accept=".xlsx,.xlsm,.xls,.csv,.tsv,.txt"
+                className="mt-1 block text-xs"
+                onChange={(e) => {
+                  setSelectedFile(e.target.files?.[0] ?? null);
+                  importLibrary.reset();
+                }}
+              />
+            </label>
+            <Button
+              size="sm"
+              disabled={!selectedFile || importLibrary.isPending}
+              onClick={() => {
+                if (!selectedFile) return;
+                importLibrary.mutate(selectedFile, {
+                  onSuccess: () => setSelectedFile(null),
+                });
               }}
-            />
-          </label>
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={refreshLibrary.isPending}
-            onClick={() => refreshLibrary.mutate()}
-          >
-            {refreshLibrary.isPending ? "Enriching…" : "Enrich pending"}
-          </Button>
+            >
+              {importLibrary.isPending ? "Importing…" : "Import"}
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={refreshLibrary.isPending}
+              onClick={() => refreshLibrary.mutate()}
+            >
+              {refreshLibrary.isPending ? "Enriching…" : "Enrich pending"}
+            </Button>
+          </div>
+
+          {importLibrary.isError && (
+            <p className="text-xs text-red-600">
+              Import failed: {(importLibrary.error as Error).message}
+            </p>
+          )}
+          {importLibrary.isSuccess && (
+            <p className="text-xs text-green-700">
+              Imported {importLibrary.data.imported}, skipped{" "}
+              {importLibrary.data.skipped_duplicates} duplicate
+              {importLibrary.data.skipped_duplicates === 1 ? "" : "s"}
+              {importLibrary.data.skipped_invalid > 0
+                ? `, ${importLibrary.data.skipped_invalid} invalid row${importLibrary.data.skipped_invalid === 1 ? "" : "s"}`
+                : ""}
+              .
+            </p>
+          )}
+          {refreshLibrary.isError && (
+            <p className="text-xs text-red-600">
+              Enrich failed: {(refreshLibrary.error as Error).message}
+            </p>
+          )}
+          {refreshLibrary.isSuccess && (
+            <p className="text-xs text-green-700">Enrichment + embedding started.</p>
+          )}
+
           {status && (
             <span className="text-xs text-zinc-500">
               enriched {status.enriched} · incomplete {status.incomplete} · failed {status.failed} ·
@@ -132,6 +172,7 @@ function ClaimRow({
 
 export default function Home() {
   const [draftId, setDraftId] = useState<string | null>(null);
+  const [selectedDraftFile, setSelectedDraftFile] = useState<File | null>(null);
 
   const uploadDraft = useUploadDraft();
   const runAnalysis = useRunAnalysis(draftId ?? "");
@@ -151,8 +192,10 @@ export default function Home() {
     );
   }, [recommendationsByClaim]);
 
-  async function handleUpload(file: File) {
-    const draft = await uploadDraft.mutateAsync(file);
+  async function handleUpload() {
+    if (!selectedDraftFile) return;
+    const draft = await uploadDraft.mutateAsync(selectedDraftFile);
+    setSelectedDraftFile(null);
     setDraftId(draft.id);
   }
 
@@ -170,20 +213,29 @@ export default function Home() {
 
       <Card className="p-4">
         <h2 className="text-sm font-medium text-zinc-700">Upload paper</h2>
-        <input
-          type="file"
-          accept=".docx,.md,.markdown,.txt"
-          className="mt-2 block text-sm"
-          disabled={uploadDraft.isPending}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleUpload(file);
-            e.target.value = "";
-          }}
-        />
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <input
+            type="file"
+            accept=".docx,.md,.markdown,.txt"
+            className="block text-sm"
+            disabled={uploadDraft.isPending}
+            onChange={(e) => {
+              setSelectedDraftFile(e.target.files?.[0] ?? null);
+              uploadDraft.reset();
+            }}
+          />
+          <Button size="sm" disabled={!selectedDraftFile || uploadDraft.isPending} onClick={handleUpload}>
+            {uploadDraft.isPending ? "Uploading…" : "Upload"}
+          </Button>
+        </div>
         {uploadDraft.isPending && (
           <p className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
             <Spinner className="h-3 w-3" /> Uploading…
+          </p>
+        )}
+        {uploadDraft.isError && (
+          <p className="mt-2 text-xs text-red-600">
+            Upload failed: {(uploadDraft.error as Error).message}
           </p>
         )}
         {draftId && !status && (

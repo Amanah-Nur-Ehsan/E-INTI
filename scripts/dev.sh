@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Runs the whole local stack (Postgres/Redis containers + API + Celery
+# worker + frontend) from one terminal. Ctrl+C stops all three foreground
+# processes together.
+#
+# The worker runs on the host (not in Docker) so it can reach Apple
+# Silicon's MPS GPU -- see README's "Running" section for why.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+docker compose up -d postgres redis
+
+( uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 2>&1 | sed -u 's/^/[api]    /' ) &
+( PYTORCH_ENABLE_MPS_FALLBACK=1 uv run celery -A app.workers.celery_app worker \
+    --loglevel=info --pool=solo 2>&1 | sed -u 's/^/[worker] /' ) &
+( cd frontend && npm run dev 2>&1 | sed -u 's/^/[web]    /' ) &
+
+cleanup() {
+    # The pkill fallbacks catch processes that fork outside this script's
+    # process group and would otherwise linger: celery's worker (the same
+    # stray-process failure mode that causes "Received unregistered task"
+    # errors on the next `make worker` start) and `uv run uvicorn --reload`,
+    # whose reloader child ignores plain SIGTERM. kill 0 (everything still
+    # in this group) runs before the final -9 sweep, but after it this
+    # shell is dead too, so nothing after it executes -- the two -9 lines
+    # below must come first, not after.
+    pkill -f "celery -A app.workers.celery_app worker" 2>/dev/null || true
+    pkill -f "uvicorn app.main:app" 2>/dev/null || true
+    sleep 1
+    pkill -9 -f "celery -A app.workers.celery_app worker" 2>/dev/null || true
+    pkill -9 -f "uvicorn app.main:app" 2>/dev/null || true
+    kill 0 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+wait

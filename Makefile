@@ -1,10 +1,15 @@
-.PHONY: up down api worker models db-upgrade db-revision test test-unit smoke lint fixtures web gen-api
+.PHONY: up down dev api worker models db-upgrade db-revision test test-unit smoke lint fixtures web gen-api
 
 up:
 	docker compose up -d postgres redis
 
 down:
 	docker compose down
+
+# One terminal, everything: containers + api + worker + web. Ctrl+C stops
+# api/worker/web together (containers keep running -- `make down` for those).
+dev:
+	./scripts/dev.sh
 
 api:
 	uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
