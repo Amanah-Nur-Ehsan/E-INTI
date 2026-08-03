@@ -41,7 +41,7 @@ class _FakeClient(GroqGeminiClient):
         self.settings = settings
         self._groq = None
         self._gemini = None
-        self._last_request_at = 0.0
+        self._next_request_at = 0.0
         self._responses = list(responses)
         self.calls = 0
         self.sleeps: list[float] = []
@@ -166,3 +166,62 @@ def test_classify_tier_now_falls_back_to_gemini_on_exhaustion(monkeypatch, setti
 
     result = client.complete_structured(tier=Tier.CLASSIFY, system="sys", user="user", schema=_Schema)
     assert result.value == "from-gemini"
+
+
+class _PacingClient(GroqGeminiClient):
+    """Exercises _pace() alone against a fake clock."""
+
+    def __init__(self, settings):
+        self.settings = settings
+        self._groq = None
+        self._gemini = None
+        self._next_request_at = 0.0
+
+
+def test_pacing_is_start_to_start_not_end_to_start(monkeypatch, settings):
+    """The original bug: the clock was stamped *after* the response, so the
+    real gap between call starts was `latency + floor` rather than `floor`.
+    With a 2.1s floor and 1.5s of model latency that yielded ~17 RPM from a
+    setting chosen to deliver ~28.
+
+    Here the first call starts at t=0 and takes 1.5s. The second call must
+    then wait only the 0.6s remaining in its 2.1s window -- not a further
+    full 2.1s.
+    """
+    monkeypatch.setattr(settings, "llm_min_seconds_between_requests", 2.1)
+
+    now = 0.0
+    sleeps: list[float] = []
+    monkeypatch.setattr("app.services.llm_client.time.monotonic", lambda: now)
+    monkeypatch.setattr("app.services.llm_client.time.sleep", lambda s: sleeps.append(s))
+
+    client = _PacingClient(settings)
+
+    client._pace()  # first call: nothing scheduled yet, so no wait
+    assert sleeps == []
+    assert client._next_request_at == pytest.approx(2.1)
+
+    now = 1.5  # the call took 1.5s to come back
+    client._pace()
+
+    assert sleeps == [pytest.approx(0.6)]  # not 2.1 -- the window is measured from the start
+    assert client._next_request_at == pytest.approx(4.2)
+
+
+def test_pacing_does_not_sleep_when_the_window_already_elapsed(monkeypatch, settings):
+    """A call slower than the floor should not then be penalised further."""
+    monkeypatch.setattr(settings, "llm_min_seconds_between_requests", 2.1)
+
+    now = 0.0
+    sleeps: list[float] = []
+    monkeypatch.setattr("app.services.llm_client.time.monotonic", lambda: now)
+    monkeypatch.setattr("app.services.llm_client.time.sleep", lambda s: sleeps.append(s))
+
+    client = _PacingClient(settings)
+    client._pace()
+
+    now = 9.0  # a very slow call, well past the 2.1s window
+    client._pace()
+
+    assert sleeps == []
+    assert client._next_request_at == pytest.approx(11.1)

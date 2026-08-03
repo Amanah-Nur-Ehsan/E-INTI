@@ -130,7 +130,10 @@ class GroqGeminiClient:
         self.settings = get_settings()
         self._groq = None
         self._gemini = None
-        self._last_request_at = 0.0
+        #: When the next request is allowed to *start*. Scheduling on starts
+        #: rather than completions is what makes the pacing floor mean what
+        #: it says -- see _pace().
+        self._next_request_at = 0.0
 
     def _groq_client(self):
         if self._groq is None:
@@ -155,10 +158,19 @@ class GroqGeminiClient:
         return self.settings.tier1_model if tier is Tier.CLASSIFY else self.settings.tier2_model
 
     def _pace(self) -> None:
-        elapsed = time.monotonic() - self._last_request_at
-        floor = self.settings.llm_min_seconds_between_requests
-        if elapsed < floor:
-            time.sleep(floor - elapsed)
+        """Block until this request's scheduled start, then book the next.
+
+        Start-to-start, not end-to-start: stamping the clock after a
+        response made the real gap `latency + floor`, so a 2.1s floor
+        tuned for Groq's ~30 RPM actually delivered ~17 RPM once ~1.5s of
+        model latency was added on top. Scheduling from the start means
+        the floor is the floor regardless of how slow any one call is.
+        """
+        now = time.monotonic()
+        if now < self._next_request_at:
+            time.sleep(self._next_request_at - now)
+            now = self._next_request_at
+        self._next_request_at = now + self.settings.llm_min_seconds_between_requests
 
     def _observe_rate_limit(self, headers) -> None:
         """Mirrors scopus_service._observe_rate_limit: sleep proactively
@@ -195,7 +207,6 @@ class GroqGeminiClient:
             response_format={"type": "json_object"},
             temperature=0.0,
         )
-        self._last_request_at = time.monotonic()
         self._observe_rate_limit(raw.headers)
         return raw.parse().choices[0].message.content or ""
 
@@ -294,7 +305,7 @@ class GroqGeminiClient:
 
 @lru_cache
 def get_llm_client() -> LLMClient:
-    """Cached so `_last_request_at` (the pacing state) persists across the
+    """Cached so `_next_request_at` (the pacing state) persists across the
     many calls one analysis run makes -- a fresh client per call would
     reset pacing every time and make it a no-op. Tests that toggle
     settings must call `get_llm_client.cache_clear()` alongside
