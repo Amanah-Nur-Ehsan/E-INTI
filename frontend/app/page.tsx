@@ -21,6 +21,29 @@ import {
 } from "@/lib/api/hooks";
 import { splitAroundSentence } from "@/lib/results";
 import { cn } from "@/lib/utils";
+import type { AnalysisRunStatus } from "@/lib/api/hooks";
+
+//: The raw RunStage enum values are backend vocabulary; show what the
+//: stage is actually doing to the user's paper instead.
+const STAGE_LABEL: Record<string, string> = {
+  PARSING: "Reading the paper",
+  CLASSIFYING_SDG: "Identifying the SDG",
+  DETECTING: "Finding claims that need a citation",
+  RECOMMENDING: "Matching references to claims",
+};
+
+/** Counts for the stage in flight, so a multi-minute wait shows movement. */
+function progressDetail(status: AnalysisRunStatus): string {
+  if (status.stage === "RECOMMENDING") {
+    const done = status.claims.with_recommendations;
+    const total = status.claims.needs_citation;
+    return total > 0 ? `${done} of ${total} claims` : "";
+  }
+  if (status.stage === "DETECTING" && status.claims.total > 0) {
+    return `${status.claims.needs_citation} of ${status.claims.total} sentences need citations`;
+  }
+  return "";
+}
 
 function FilePicker({
   file,
@@ -326,8 +349,9 @@ export default function Home() {
                     : "bg-red-100 text-red-800 border-red-200",
               )}
             >
-              {status.stage ?? status.status}
+              {STAGE_LABEL[status.stage ?? ""] ?? status.stage ?? status.status}
             </Badge>
+            {isRunning && <span>{progressDetail(status)}</span>}
             {status.error && <span className="text-destructive">{status.error}</span>}
           </div>
         )}
