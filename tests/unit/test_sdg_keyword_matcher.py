@@ -35,11 +35,9 @@ def test_boolean_and_requires_both_terms_present_not_adjacent():
     matches = prefilter(text)
     assert any(m.number == 14 for m in matches)
 
-    # A text with only one of the two terms must not match that keyword.
-    matches_partial = prefilter("This paper only discusses coral bleaching, nothing marine.")
-    goal_14 = next((m for m in matches_partial if m.number == 14), None)
-    # "marine" appears in the sentence itself as a negation, so this keyword
-    # legitimately still matches -- swap in unrelated text to prove absence.
+    # Only one of the two terms present -> that keyword must not match.
+    # Note the text has to avoid the word "marine" entirely, including in a
+    # negation like "nothing marine" -- the matcher sees tokens, not intent.
     matches_absent = prefilter("This paper only discusses coral bleaching in a lab tank.")
     goal_14_absent = next((m for m in matches_absent if m.number == 14), None)
     assert goal_14_absent is None or "marine and coral bleaching" not in goal_14_absent.matched_keywords
