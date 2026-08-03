@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     # External API keys
     elsevier_api_key: str = ""
     elsevier_inst_token: str = ""
-    groq_api_key: str = ""
+    deepseek_api_key: str = ""
     gemini_api_key: str = ""
 
     # Provider mocking
@@ -36,16 +36,25 @@ class Settings(BaseSettings):
     embedding_fake: bool = False
     reranker_fake: bool = False
 
-    # LLM routing
-    groq_base_url: str = "https://api.groq.com/openai/v1"
-    tier1_model: str = "llama-3.1-8b-instant"
-    tier2_model: str = "llama-3.3-70b-versatile"
+    # LLM routing. DeepSeek is OpenAI-API-compatible, so the same client
+    # code that used to talk to Groq talks to DeepSeek by swapping base_url
+    # + key + model names. deepseek-chat (not deepseek-reasoner) for both
+    # tiers: the reasoner model emits long chain-of-thought before its
+    # answer, which is real latency for a "cheap, high-volume" classify
+    # call and unnecessary for verification, which is a bounded judgment
+    # call over a short abstract, not an open-ended reasoning problem.
+    deepseek_base_url: str = "https://api.deepseek.com"
+    tier1_model: str = "deepseek-chat"
+    tier2_model: str = "deepseek-chat"
     gemini_fallback_model: str = "gemini-2.5-flash"
 
-    # LLM pacing and rate limiting. Groq's free tier is roughly 30 RPM per
-    # model; 2.1s between calls gives ~5% headroom under a 2.0s/call
-    # ceiling, which makes a 429 rare rather than merely survivable.
-    llm_min_seconds_between_requests: float = 2.1
+    # LLM pacing and rate limiting. Unlike Groq's free tier, DeepSeek does
+    # not enforce a hard per-minute token ceiling -- the real bottleneck
+    # this project hit was never request volume (Groq's RPM had headroom
+    # the whole time), it was Groq's *token*-per-minute cap. 0.3s is
+    # conservative client-side pacing, not a limit DeepSeek imposes; lower
+    # it if latency, not throttling, becomes the bottleneck instead.
+    llm_min_seconds_between_requests: float = 0.3
     llm_max_attempts: int = 5
     llm_retry_base_seconds: float = 2.0
     llm_max_backoff_seconds: float = 60.0
@@ -96,11 +105,11 @@ class Settings(BaseSettings):
         missing: list[str] = []
         if not self.scopus_mocked and not self.elsevier_api_key:
             missing.append("ELSEVIER_API_KEY")
-        # Groq serves both tiers, so it is the only mandatory LLM key. Gemini is
-        # a fallback for verification only; without it a Groq outage degrades
+        # DeepSeek serves both tiers, so it is the only mandatory LLM key.
+        # Gemini is a fallback; without it a DeepSeek outage degrades
         # candidates to the SKIPPED verdict rather than failing the run.
-        if not self.llm_mocked and not self.groq_api_key:
-            missing.append("GROQ_API_KEY")
+        if not self.llm_mocked and not self.deepseek_api_key:
+            missing.append("DEEPSEEK_API_KEY")
         if missing:
             raise ValueError(
                 f"Real providers enabled but keys missing: {', '.join(missing)}. "

@@ -1,11 +1,11 @@
-"""Every Groq call goes through complete_structured with
-response_format={"type": "json_object"} (llm_client.py::_call_groq),
-unconditionally, regardless of tier. Groq rejects that with a 400 unless
-the word "json" appears somewhere in the messages -- a constraint the
-mock LLM client never enforces, so a missing "json" only surfaces
-against the real API. This test is the guard the mock can't provide:
-catches a system prompt missing the word before it ships, the way the
-SDG classification prompt did.
+"""Every primary-LLM call goes through complete_structured with
+response_format={"type": "json_object"} (llm_client.py::_call_primary),
+unconditionally, regardless of tier. Both Groq and DeepSeek reject that
+with a 400 unless the word "json" appears somewhere in the messages -- a
+constraint the mock LLM client never enforces, so a missing "json" only
+surfaces against the real API. This test is the guard the mock can't
+provide: catches a system prompt missing the word before it ships, the
+way the SDG classification prompt did.
 """
 
 import pytest

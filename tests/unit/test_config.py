@@ -7,7 +7,7 @@ def real_providers(**overrides) -> dict:
     base = {
         "use_mock_providers": False,
         "elsevier_api_key": "els-key",
-        "groq_api_key": "groq-key",
+        "deepseek_api_key": "deepseek-key",
         "gemini_api_key": "gemini-key",
         "_env_file": None,
     }
@@ -15,15 +15,15 @@ def real_providers(**overrides) -> dict:
     return base
 
 
-def test_groq_alone_is_sufficient():
-    """Groq serves both tiers; Gemini only backstops verification."""
+def test_deepseek_alone_is_sufficient():
+    """DeepSeek serves both tiers; Gemini only backstops verification."""
     settings = Settings(**real_providers(gemini_api_key=""))
     assert settings.llm_mocked is False
 
 
-def test_missing_groq_fails_fast():
-    with pytest.raises(ValueError, match="GROQ_API_KEY"):
-        Settings(**real_providers(groq_api_key=""))
+def test_missing_deepseek_fails_fast():
+    with pytest.raises(ValueError, match="DEEPSEEK_API_KEY"):
+        Settings(**real_providers(deepseek_api_key=""))
 
 
 def test_missing_scopus_key_fails_fast():

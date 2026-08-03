@@ -2,10 +2,16 @@
 
 Two tiers, per the locked routing decision:
 
-* Tier.CLASSIFY — high volume, trivial JSON: Groq llama-3.1-8b-instant.
-* Tier.VERIFY   — reasoning-heavy: Groq llama-3.3-70b-versatile, falling
-  back to Gemini 2.5 Flash (native response_schema) when Groq errors or
-  keeps returning unparseable JSON.
+* Tier.CLASSIFY — high volume, trivial JSON: DeepSeek deepseek-chat.
+* Tier.VERIFY   — a bounded judgment call over one abstract: DeepSeek
+  deepseek-chat, falling back to Gemini 2.5 Flash (native response_schema)
+  when DeepSeek errors or keeps returning unparseable JSON.
+
+(Originally Groq; swapped to DeepSeek because Groq's free-tier *token*-per-
+minute ceiling -- not request volume, which had headroom throughout -- was
+the actual bottleneck on real papers, forcing 45-60s stalls multiple times
+per run. DeepSeek's OpenAI-compatible API meant this was a config +
+naming change, not a rewrite.)
 
 Every call is validated against a Pydantic schema with exactly one repair
 retry before the caller is told it failed. Callers must degrade gracefully
@@ -13,7 +19,7 @@ rather than inventing a result — an unavailable verifier yields the SKIPPED
 verdict, never a fabricated SUPPORTED.
 
 Transport concerns (429s, timeouts, transient 5xx) are handled one layer
-below `complete_structured`, in `_call_groq_with_retry`, so a rate limit
+below `complete_structured`, in `_call_primary_with_retry`, so a rate limit
 can never consume the JSON-repair retry above it -- those are two
 independent kinds of failure and mixing them was the original bug: a 429
 landed in a bare `except Exception` that `break`s after one HTTP attempt.
@@ -58,7 +64,8 @@ class LLMOutputError(RuntimeError):
 
 
 class LLMRateLimited(RuntimeError):
-    """Groq kept failing (429 or transient 5xx/timeout) after every retry."""
+    """The primary provider kept failing (429 or transient 5xx/timeout)
+    after every retry."""
 
 
 class LLMClient(Protocol):
@@ -85,10 +92,12 @@ _DURATION_RE = re.compile(r"(\d+(?:\.\d+)?)(ms|s|m|h)")
 _DURATION_UNITS = {"ms": 0.001, "s": 1.0, "m": 60.0, "h": 3600.0}
 
 
-def _parse_groq_duration(value: str | None) -> float | None:
-    """Groq's x-ratelimit-reset-* headers are duration strings like
-    '7.66s', '2m59.56s', or '120ms' -- unlike Scopus's epoch-seconds
-    X-RateLimit-Reset. Sum every (number, unit) pair found.
+def _parse_duration_string(value: str | None) -> float | None:
+    """Some providers (Groq was the original case) send rate-limit-reset
+    headers as duration strings like '7.66s', '2m59.56s', or '120ms'
+    rather than plain seconds. Sum every (number, unit) pair found; kept
+    as a fallback parser for _retry_after_seconds regardless of which
+    provider is primary.
     """
     if not value:
         return None
@@ -115,37 +124,41 @@ def _retry_after_seconds(exc: APIStatusError) -> float | None:
     try:
         return float(raw)
     except ValueError:
-        return _parse_groq_duration(raw)
+        return _parse_duration_string(raw)
 
 
-class GroqGeminiClient:
-    """Groq primary with a Gemini fallback for both tiers."""
+class DeepSeekGeminiClient:
+    """DeepSeek primary with a Gemini fallback for both tiers."""
 
-    #: Below this many requests or tokens remaining, sleep until Groq's
-    #: window resets rather than wait to be told via a 429.
+    #: Below this many requests or tokens remaining, sleep until the
+    #: window resets rather than wait to be told via a 429. DeepSeek does
+    #: not send the rate-limit-remaining headers Groq did, so in practice
+    #: this never triggers for DeepSeek today -- it's provider-agnostic
+    #: and activates automatically if DeepSeek (or a future primary) ever
+    #: starts sending them.
     _RATE_LIMIT_FLOOR_REQUESTS = 2
     _RATE_LIMIT_FLOOR_TOKENS = 2000
 
     def __init__(self) -> None:
         self.settings = get_settings()
-        self._groq = None
+        self._primary = None
         self._gemini = None
         #: When the next request is allowed to *start*. Scheduling on starts
         #: rather than completions is what makes the pacing floor mean what
         #: it says -- see _pace().
         self._next_request_at = 0.0
 
-    def _groq_client(self):
-        if self._groq is None:
+    def _primary_client(self):
+        if self._primary is None:
             from openai import OpenAI
 
-            self._groq = OpenAI(
-                api_key=self.settings.groq_api_key,
-                base_url=self.settings.groq_base_url,
+            self._primary = OpenAI(
+                api_key=self.settings.deepseek_api_key,
+                base_url=self.settings.deepseek_base_url,
                 max_retries=0,  # we own retries -- the SDK default would fight our loop
                 timeout=self.settings.llm_timeout_seconds,
             )
-        return self._groq
+        return self._primary
 
     def _gemini_client(self):
         if self._gemini is None:
@@ -161,10 +174,10 @@ class GroqGeminiClient:
         """Block until this request's scheduled start, then book the next.
 
         Start-to-start, not end-to-start: stamping the clock after a
-        response made the real gap `latency + floor`, so a 2.1s floor
-        tuned for Groq's ~30 RPM actually delivered ~17 RPM once ~1.5s of
-        model latency was added on top. Scheduling from the start means
-        the floor is the floor regardless of how slow any one call is.
+        response makes the real gap `latency + floor`, which quietly
+        halves effective throughput once any real model latency is added
+        on top. Scheduling from the start means the floor is the floor
+        regardless of how slow any one call is.
         """
         now = time.monotonic()
         if now < self._next_request_at:
@@ -174,31 +187,32 @@ class GroqGeminiClient:
 
     def _observe_rate_limit(self, headers) -> None:
         """Mirrors scopus_service._observe_rate_limit: sleep proactively
-        when Groq's own quota headers say we're close to the edge, rather
-        than waiting for the 429 that would otherwise arrive next call.
+        when the provider's own quota headers say we're close to the edge,
+        rather than waiting for the 429 that would otherwise arrive next
+        call. A no-op whenever those headers are absent.
         """
         requests_left = _to_int(headers.get("x-ratelimit-remaining-requests"))
         tokens_left = _to_int(headers.get("x-ratelimit-remaining-tokens"))
 
         wait: float | None = None
         if requests_left is not None and requests_left <= self._RATE_LIMIT_FLOOR_REQUESTS:
-            wait = _parse_groq_duration(headers.get("x-ratelimit-reset-requests"))
+            wait = _parse_duration_string(headers.get("x-ratelimit-reset-requests"))
         elif tokens_left is not None and tokens_left <= self._RATE_LIMIT_FLOOR_TOKENS:
-            wait = _parse_groq_duration(headers.get("x-ratelimit-reset-tokens"))
+            wait = _parse_duration_string(headers.get("x-ratelimit-reset-tokens"))
 
         if wait:
             wait = min(wait, self.settings.llm_max_backoff_seconds)
             log.warning(
-                "groq_quota_low",
+                "llm_quota_low",
                 requests_left=requests_left,
                 tokens_left=tokens_left,
                 sleeping_for=round(wait, 1),
             )
             time.sleep(wait)
 
-    def _call_groq(self, tier: Tier, system: str, user: str) -> str:
+    def _call_primary(self, tier: Tier, system: str, user: str) -> str:
         self._pace()
-        raw = self._groq_client().chat.completions.with_raw_response.create(
+        raw = self._primary_client().chat.completions.with_raw_response.create(
             model=self._model_for(tier),
             messages=[
                 {"role": "system", "content": system},
@@ -210,29 +224,29 @@ class GroqGeminiClient:
         self._observe_rate_limit(raw.headers)
         return raw.parse().choices[0].message.content or ""
 
-    def _call_groq_with_retry(self, tier: Tier, system: str, user: str) -> str:
+    def _call_primary_with_retry(self, tier: Tier, system: str, user: str) -> str:
         """The transport retry loop: 429s, timeouts, and transient 5xx are
-        all handled here, honoring Retry-After where Groq sends one and
-        backing off exponentially otherwise. A 4xx that isn't 429 is our
-        bug -- it's re-raised immediately rather than retried.
+        all handled here, honoring Retry-After where the provider sends one
+        and backing off exponentially otherwise. A 4xx that isn't 429 is
+        our bug -- it's re-raised immediately rather than retried.
         """
         delay = self.settings.llm_retry_base_seconds
         last: Exception | None = None
 
         for attempt in range(1, self.settings.llm_max_attempts + 1):
             try:
-                return self._call_groq(tier, system, user)
+                return self._call_primary(tier, system, user)
             except RateLimitError as exc:
                 wait = _retry_after_seconds(exc) or delay
                 wait = min(wait, self.settings.llm_max_backoff_seconds)
                 log.warning(
-                    "groq_rate_limited", tier=str(tier), attempt=attempt, sleeping_for=round(wait, 1)
+                    "llm_rate_limited", tier=str(tier), attempt=attempt, sleeping_for=round(wait, 1)
                 )
                 time.sleep(wait)
                 delay = min(delay * 2, self.settings.llm_max_backoff_seconds)
                 last = exc
             except (APITimeoutError, APIConnectionError, InternalServerError) as exc:
-                log.warning("groq_transport_error", tier=str(tier), attempt=attempt, error=str(exc))
+                log.warning("llm_transport_error", tier=str(tier), attempt=attempt, error=str(exc))
                 time.sleep(delay)
                 delay = min(delay * 2, self.settings.llm_max_backoff_seconds)
                 last = exc
@@ -240,7 +254,7 @@ class GroqGeminiClient:
                 if exc.status_code not in _RETRYABLE_STATUS:
                     raise
                 log.warning(
-                    "groq_retryable_status",
+                    "llm_retryable_status",
                     tier=str(tier),
                     attempt=attempt,
                     status=exc.status_code,
@@ -250,7 +264,7 @@ class GroqGeminiClient:
                 last = exc
 
         raise LLMRateLimited(
-            f"Groq exhausted {self.settings.llm_max_attempts} attempts for {tier}"
+            f"Primary LLM exhausted {self.settings.llm_max_attempts} attempts for {tier}"
         ) from last
 
     def _call_gemini(self, system: str, user: str, schema: type[T]) -> T:
@@ -271,7 +285,7 @@ class GroqGeminiClient:
 
         for attempt in (1, 2):
             try:
-                raw = self._call_groq_with_retry(tier, system, prompt)
+                raw = self._call_primary_with_retry(tier, system, prompt)
                 return schema.model_validate_json(_extract_json(raw))
             except ValidationError as exc:
                 last_error = exc
@@ -316,7 +330,7 @@ def get_llm_client() -> LLMClient:
         from app.services.mocks.mock_llm import MockLLMClient
 
         return MockLLMClient()
-    return GroqGeminiClient()
+    return DeepSeekGeminiClient()
 
 
 def json_schema_hint(schema: type[BaseModel]) -> str:

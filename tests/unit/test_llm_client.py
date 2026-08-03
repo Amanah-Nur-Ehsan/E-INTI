@@ -1,6 +1,8 @@
-"""The transport-retry layer added to fix the Groq 429: pacing, backoff,
-Retry-After handling, and -- the actual bug fix -- that a rate limit can
-no longer consume the JSON-repair retry above it.
+"""The transport-retry layer: pacing, backoff, Retry-After handling, and
+the fix that a rate limit can no longer consume the JSON-repair retry
+above it. Originally written against Groq (hence the fixture URLs
+referencing groq.com in some historical comments); the logic is provider-
+agnostic and now runs against DeepSeek.
 """
 
 import httpx
@@ -9,11 +11,11 @@ from openai import APIStatusError, RateLimitError
 from pydantic import BaseModel
 
 from app.services.llm_client import (
-    GroqGeminiClient,
+    DeepSeekGeminiClient,
     LLMOutputError,
     LLMRateLimited,
     Tier,
-    _parse_groq_duration,
+    _parse_duration_string,
     _retry_after_seconds,
 )
 
@@ -23,30 +25,30 @@ class _Schema(BaseModel):
 
 
 def _rate_limit_error(headers: dict | None = None) -> RateLimitError:
-    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    request = httpx.Request("POST", "https://api.deepseek.com/chat/completions")
     response = httpx.Response(429, headers=headers or {}, request=request)
     return RateLimitError("rate limited", response=response, body=None)
 
 
 def _status_error(status_code: int) -> APIStatusError:
-    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    request = httpx.Request("POST", "https://api.deepseek.com/chat/completions")
     response = httpx.Response(status_code, request=request)
     return APIStatusError("status error", response=response, body=None)
 
 
-class _FakeClient(GroqGeminiClient):
+class _FakeClient(DeepSeekGeminiClient):
     """Overrides only the transport call, so the retry/pacing logic runs for real."""
 
     def __init__(self, settings, responses):
         self.settings = settings
-        self._groq = None
+        self._primary = None
         self._gemini = None
         self._next_request_at = 0.0
         self._responses = list(responses)
         self.calls = 0
         self.sleeps: list[float] = []
 
-    def _call_groq(self, tier, system, user):  # noqa: ARG002
+    def _call_primary(self, tier, system, user):  # noqa: ARG002
         self.calls += 1
         outcome = self._responses.pop(0)
         if isinstance(outcome, Exception):
@@ -69,8 +71,8 @@ class _FakeClient(GroqGeminiClient):
         ("garbage", None),
     ],
 )
-def test_parse_groq_duration(raw, expected):
-    assert _parse_groq_duration(raw) == expected
+def test_parse_duration_string(raw, expected):
+    assert _parse_duration_string(raw) == expected
 
 
 def test_retry_after_seconds_reads_numeric_header():
@@ -100,7 +102,7 @@ def test_transport_retry_recovers_after_two_rate_limits(monkeypatch, settings):
         settings,
         [_rate_limit_error(), _rate_limit_error(), '{"value": "ok"}'],
     )
-    result = client._call_groq_with_retry(Tier.VERIFY, "sys", "user")
+    result = client._call_primary_with_retry(Tier.VERIFY, "sys", "user")
 
     assert result == '{"value": "ok"}'
     assert client.calls == 3
@@ -115,7 +117,7 @@ def test_transport_retry_raises_llm_rate_limited_after_exhausting_attempts(monke
 
     client = _FakeClient(settings, [_rate_limit_error()] * 3)
     with pytest.raises(LLMRateLimited):
-        client._call_groq_with_retry(Tier.CLASSIFY, "sys", "user")
+        client._call_primary_with_retry(Tier.CLASSIFY, "sys", "user")
     assert client.calls == 3
 
 
@@ -125,7 +127,7 @@ def test_non_retryable_status_error_raised_immediately(monkeypatch, settings):
 
     client = _FakeClient(settings, [_status_error(401)])
     with pytest.raises(APIStatusError) as exc_info:
-        client._call_groq_with_retry(Tier.CLASSIFY, "sys", "user")
+        client._call_primary_with_retry(Tier.CLASSIFY, "sys", "user")
     assert exc_info.value.status_code == 401
     assert client.calls == 1  # no retry burned on a 4xx that isn't 429
 
@@ -136,7 +138,7 @@ def test_a_rate_limit_does_not_consume_the_json_repair_attempt(monkeypatch, sett
     broke out after one HTTP attempt -- the repair loop never got a chance
     to run, and Gemini fallback was VERIFY-only so CLASSIFY calls just failed.
     After the fix, transport retries happen entirely inside
-    _call_groq_with_retry, so complete_structured only ever sees a clean
+    _call_primary_with_retry, so complete_structured only ever sees a clean
     success or a exhausted-retries LLMRateLimited -- never a mid-repair 429.
     """
     monkeypatch.setattr(settings, "llm_max_attempts", 2)
@@ -145,7 +147,7 @@ def test_a_rate_limit_does_not_consume_the_json_repair_attempt(monkeypatch, sett
     monkeypatch.setattr(settings, "gemini_api_key", "")  # force the failure to surface, not fall back
     monkeypatch.setattr("app.services.llm_client.time.sleep", lambda s: None)
 
-    # Both attempts inside _call_groq_with_retry 429 -- exhausted there,
+    # Both attempts inside _call_primary_with_retry 429 -- exhausted there,
     # never reaching complete_structured's JSON-repair prompt logic at all.
     client = _FakeClient(settings, [_rate_limit_error(), _rate_limit_error()])
     with pytest.raises(LLMOutputError):
@@ -168,12 +170,12 @@ def test_classify_tier_now_falls_back_to_gemini_on_exhaustion(monkeypatch, setti
     assert result.value == "from-gemini"
 
 
-class _PacingClient(GroqGeminiClient):
+class _PacingClient(DeepSeekGeminiClient):
     """Exercises _pace() alone against a fake clock."""
 
     def __init__(self, settings):
         self.settings = settings
-        self._groq = None
+        self._primary = None
         self._gemini = None
         self._next_request_at = 0.0
 

@@ -125,17 +125,22 @@ To get real keys:
 | Key | Required? | Where |
 |---|---|---|
 | `ELSEVIER_API_KEY` | for real enrichment | https://dev.elsevier.com — register an app; institutional network or `ELSEVIER_INST_TOKEN` is needed for abstract entitlement |
-| `GROQ_API_KEY` | **yes** | https://console.groq.com/keys |
+| `DEEPSEEK_API_KEY` | **yes** | https://platform.deepseek.com/api_keys |
 | `GEMINI_API_KEY` | optional | https://aistudio.google.com/apikey |
 
-**Only one LLM key is needed, and it must be Groq.** Groq serves both tiers:
-`llama-3.1-8b-instant` for claim classification and `llama-3.3-70b-versatile` for
-verification. Gemini 2.5 Flash is a fallback for the verification tier alone, so it
-cannot substitute for Groq — without a Groq key, claim detection has no classifier.
+**Only one LLM key is needed, and it must be DeepSeek.** DeepSeek (`deepseek-chat`)
+serves both tiers — claim classification and verification. Gemini 2.5 Flash is a
+fallback for *both* tiers, but cannot substitute for DeepSeek as primary — without a
+DeepSeek key, claim detection has no classifier.
 
-Adding `GEMINI_API_KEY` is still worthwhile: if Groq rate-limits or returns
-unparseable JSON during verification, the request retries against Gemini instead of
-degrading those candidates to the `SKIPPED` verdict.
+Adding `GEMINI_API_KEY` is still worthwhile: if DeepSeek rate-limits or returns
+unparseable JSON, the request retries against Gemini instead of degrading that
+call to the `SKIPPED` verdict (verification) or failing the run (classification).
+
+Originally built against Groq; switched to DeepSeek because Groq's free-tier
+*token*-per-minute ceiling — not request volume, which had headroom the whole
+time — was the real bottleneck on real papers, forcing repeated 45-60s stalls.
+DeepSeek's API is OpenAI-compatible, so the swap was a config change, not a rewrite.
 
 ### Scopus abstract entitlement
 
