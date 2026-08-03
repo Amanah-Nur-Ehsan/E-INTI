@@ -1,4 +1,5 @@
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy import case, func, select
 
 from app.api.deps import SessionDep
@@ -68,6 +69,39 @@ async def missing_abstracts_by_year(session: SessionDep) -> list[MissingAbstract
         MissingAbstractsByYear(year=year, missing=missing, total=total)
         for year, missing, total in rows
     ]
+
+
+XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+@router.get("/missing-abstracts-template")
+async def missing_abstracts_template(
+    session: SessionDep, year: int | None = Query(default=None)
+) -> Response:
+    """xlsx of every reference missing an abstract for `year` (omit the
+    query param for the "unknown year" bucket) -- the header row matches
+    what /library/import already recognizes, so filling in ABSTRACT and
+    re-uploading the same file backfills just that field via the normal
+    duplicate-match path, no separate mechanism needed.
+    """
+    from app.services.missing_abstract_template import build_missing_abstract_template
+
+    stmt = select(ReferencePaper).where(ReferencePaper.abstract.is_(None))
+    stmt = (
+        stmt.where(ReferencePaper.year == year)
+        if year is not None
+        else stmt.where(ReferencePaper.year.is_(None))
+    )
+    stmt = stmt.order_by(ReferencePaper.original_row_number)
+    references = list((await session.execute(stmt)).scalars())
+
+    content = build_missing_abstract_template(references)
+    label = str(year) if year is not None else "unknown-year"
+    return Response(
+        content=content,
+        media_type=XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="missing-abstracts-{label}.xlsx"'},
+    )
 
 
 @router.get("", response_model=list[ReferenceRead])

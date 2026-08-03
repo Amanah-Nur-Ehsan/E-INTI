@@ -160,3 +160,9 @@ export async function postFormData(path: string, file: File, params?: Record<str
 export function downloadUrl(exportId: string): string {
   return `/api/v1/exports/${exportId}/download`;
 }
+
+export function missingAbstractsTemplateUrl(year: number | null): string {
+  return year === null
+    ? "/api/v1/library/missing-abstracts-template"
+    : `/api/v1/library/missing-abstracts-template?year=${year}`;
+}

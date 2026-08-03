@@ -1,12 +1,12 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
+import { Download, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { BestReferencePanel } from "@/components/BestReferencePanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { downloadUrl } from "@/lib/api/client";
+import { downloadUrl, missingAbstractsTemplateUrl } from "@/lib/api/client";
 import {
   useAcceptedCitations,
   useAnalysisStatus,
@@ -180,12 +180,22 @@ function LibraryStrip() {
           {missingByYear && missingByYear.length > 0 && (
             <div className="flex flex-col gap-1">
               <span className="text-xs text-muted-foreground">
-                Missing abstracts by year (worst first) — fill these in first:
+                Missing abstracts by year (worst first) — fill these in first. Click a year to
+                download a template listing exactly those rows: fill in the ABSTRACT column and
+                re-upload it above to backfill.
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {missingByYear.map((row) => (
-                  <Badge key={row.year ?? "unknown"} variant="outline" className="text-xs">
+                  <Badge
+                    key={row.year ?? "unknown"}
+                    variant="outline"
+                    className="cursor-pointer text-xs"
+                    render={
+                      <a href={missingAbstractsTemplateUrl(row.year)} download title="Download template for this year" />
+                    }
+                  >
                     {row.year ?? "Unknown year"}: {row.missing}/{row.total}
+                    <Download className="h-3 w-3" />
                   </Badge>
                 ))}
               </div>
