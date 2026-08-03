@@ -14,6 +14,8 @@ type ClaimRead = components["schemas"]["ClaimRead"];
 type RecommendationRead = components["schemas"]["RecommendationRead"];
 type ExportRead = components["schemas"]["ExportRead"];
 type ExportRequest = components["schemas"]["ExportRequest"];
+type BestReferenceRead = components["schemas"]["BestReferenceRead"];
+type ParagraphRewriteRead = components["schemas"]["ParagraphRewriteRead"];
 
 const RUNNING_STATUSES = new Set(["PENDING", "RUNNING"]);
 
@@ -153,6 +155,31 @@ export function useSetDecision(draftId: string) {
   });
 }
 
+export function useBestReference(draftId: string, enabled = true) {
+  return useQuery({
+    queryKey: ["drafts", draftId, "best-reference"],
+    queryFn: () =>
+      api.get("/api/v1/drafts/{draft_id}/best-reference", {
+        params: { draft_id: draftId },
+      }),
+    // Same reasoning as useAnalysisStatus: nothing to fetch until analysis
+    // has actually produced recommendations, so callers gate this rather
+    // than let it 404 the instant a draft exists.
+    enabled: Boolean(draftId) && enabled,
+    retry: false,
+  });
+}
+
+export function useRewriteParagraph() {
+  return useMutation({
+    mutationFn: ({ recommendationId, style }: { recommendationId: string; style: string }) =>
+      api.post("/api/v1/recommendations/{recommendation_id}/rewrite-paragraph", {
+        params: { recommendation_id: recommendationId },
+        body: { style },
+      }) as Promise<ParagraphRewriteRead>,
+  });
+}
+
 export function useCreateExport(draftId: string) {
   return useMutation({
     mutationFn: (body: ExportRequest) =>
@@ -174,4 +201,6 @@ export type {
   RecommendationRead,
   ExportRead,
   ExportRequest,
+  BestReferenceRead,
+  ParagraphRewriteRead,
 };

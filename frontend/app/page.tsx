@@ -1,25 +1,22 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import { useMemo, useState } from "react";
-import { ReferenceRow } from "@/components/ReferenceRow";
+import { useState } from "react";
+import { BestReferencePanel } from "@/components/BestReferencePanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { downloadUrl } from "@/lib/api/client";
 import {
+  useAcceptedCitations,
   useAnalysisStatus,
   useCreateExport,
-  useClaims,
   useImportLibrary,
   useLibraryStatus,
-  useRecommendationsByDraft,
   useRefreshLibrary,
   useRunAnalysis,
-  useSetDecision,
   useUploadDraft,
 } from "@/lib/api/hooks";
-import { splitAroundSentence } from "@/lib/results";
 import { cn } from "@/lib/utils";
 import type { AnalysisRunStatus } from "@/lib/api/hooks";
 
@@ -176,61 +173,6 @@ function LibraryStrip() {
   );
 }
 
-function ClaimRow({
-  claimId,
-  sectionTitle,
-  localContext,
-  sentenceText,
-  recommendations,
-  onUseRecommendation,
-  isDeciding,
-}: {
-  claimId: string;
-  sectionTitle: string | null;
-  localContext: string;
-  sentenceText: string;
-  recommendations: import("@/lib/api/hooks").RecommendationRead[];
-  onUseRecommendation: (recommendationId: string) => void;
-  isDeciding: boolean;
-}) {
-  const { before, match, after } = splitAroundSentence(localContext, sentenceText);
-  const top = recommendations.slice(0, 3);
-
-  return (
-    <Card className="p-4">
-      {sectionTitle && (
-        <p className="text-xs font-medium uppercase text-muted-foreground">{sectionTitle}</p>
-      )}
-      <p className="mt-1 text-sm leading-relaxed text-foreground/90">
-        {match ? (
-          <>
-            {before}
-            <strong className="font-semibold text-foreground">{match}</strong>
-            {after}
-          </>
-        ) : (
-          before
-        )}
-      </p>
-      <div className="mt-3 space-y-2">
-        {top.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No supporting reference found.</p>
-        ) : (
-          top.map((rec) => (
-            <ReferenceRow
-              key={rec.id}
-              recommendation={rec}
-              isPending={isDeciding}
-              onUse={() => onUseRecommendation(rec.id)}
-            />
-          ))
-        )}
-      </div>
-      <span className="sr-only">{claimId}</span>
-    </Card>
-  );
-}
-
 export default function Home() {
   const [draftId, setDraftId] = useState<string | null>(null);
   const [selectedDraftFile, setSelectedDraftFile] = useState<File | null>(null);
@@ -239,20 +181,14 @@ export default function Home() {
   const uploadDraft = useUploadDraft();
   const runAnalysis = useRunAnalysis(draftId ?? "");
   const { data: status } = useAnalysisStatus(draftId ?? "", hasStartedAnalysis);
-  const { data: claims } = useClaims(draftId ?? "", true);
-  const { data: recommendationsByClaim } = useRecommendationsByDraft(draftId ?? "");
-  const setDecision = useSetDecision(draftId ?? "");
+  const { data: acceptedCitations } = useAcceptedCitations(draftId ?? "");
   const createExport = useCreateExport(draftId ?? "");
 
   const isRunning = status ? status.status === "PENDING" || status.status === "RUNNING" : false;
   const isCompleted = status?.status === "COMPLETED";
-
-  const hasAcceptedCitation = useMemo(() => {
-    if (!recommendationsByClaim) return false;
-    return Object.values(recommendationsByClaim).some((recs) =>
-      recs.some((r) => r.user_decision === "ACCEPTED"),
-    );
-  }, [recommendationsByClaim]);
+  const hasAcceptedCitation = Boolean(
+    acceptedCitations && Object.keys(acceptedCitations).length > 0,
+  );
 
   async function handleUpload() {
     if (!selectedDraftFile) return;
@@ -357,24 +293,10 @@ export default function Home() {
         )}
       </Card>
 
-      {isCompleted && claims && (
-        <section className="flex flex-col gap-4">
-          {status?.sdg_number && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-200">
-                SDG {status.sdg_number}
-              </Badge>
-              <span>
-                {status.sdg_name}
-                {status.sdg_keyword ? ` · ${status.sdg_keyword}` : ""}
-              </span>
-            </div>
-          )}
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-medium text-foreground">
-              Claims needing citation ({claims.length})
-            </h2>
-            {hasAcceptedCitation && (
+      {isCompleted && (
+        <>
+          {hasAcceptedCitation && (
+            <div className="flex justify-end">
               <Button
                 size="sm"
                 variant="secondary"
@@ -391,28 +313,17 @@ export default function Home() {
               >
                 {createExport.isPending ? "Preparing…" : "Download DOCX"}
               </Button>
-            )}
-          </div>
-
-          {claims.length === 0 && (
-            <p className="text-sm text-muted-foreground">No claims needing citation were found.</p>
+            </div>
           )}
-
-          {claims.map((claim) => (
-            <ClaimRow
-              key={claim.id}
-              claimId={claim.id}
-              sectionTitle={claim.section_title}
-              localContext={claim.local_context}
-              sentenceText={claim.sentence_text}
-              recommendations={recommendationsByClaim?.[claim.id] ?? []}
-              isDeciding={setDecision.isPending}
-              onUseRecommendation={(recommendationId) =>
-                setDecision.mutate({ recommendationId, decision: "ACCEPTED" })
-              }
-            />
-          ))}
-        </section>
+          <BestReferencePanel
+            draftId={draftId ?? ""}
+            enabled={isCompleted}
+            sdgNumber={status?.sdg_number}
+            sdgName={status?.sdg_name}
+            sdgKeyword={status?.sdg_keyword}
+            sdgRationale={status?.sdg_rationale}
+          />
+        </>
       )}
     </main>
   );

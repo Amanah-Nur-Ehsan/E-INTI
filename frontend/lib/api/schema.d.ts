@@ -240,6 +240,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/drafts/{draft_id}/best-reference": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Best Reference For Draft
+         * @description The single reference this paper should cite: the highest-scoring
+         *     top-ranked recommendation across every claim in the draft. Always
+         *     returns the closest match even if it falls below the usable
+         *     threshold -- an empty response reads as "broken," not "no reference
+         *     is good enough yet," so the caller gets the number and decides.
+         */
+        get: operations["best_reference_for_draft_api_v1_drafts__draft_id__best_reference_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/drafts/{draft_id}/accepted-citations": {
         parameters: {
             query?: never;
@@ -257,6 +281,29 @@ export interface paths {
         get: operations["accepted_citations_for_draft_api_v1_drafts__draft_id__accepted_citations_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recommendations/{recommendation_id}/rewrite-paragraph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rewrite Paragraph For Recommendation
+         * @description Generate a version of the claim's paragraph with this reference's
+         *     citation woven in, plus the bibliography entry to go with it -- for
+         *     the "help me actually write the cited paragraph" ask, not just "here
+         *     is a reference you could use."
+         */
+        post: operations["rewrite_paragraph_for_recommendation_api_v1_recommendations__recommendation_id__rewrite_paragraph_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -415,6 +462,42 @@ export interface components {
             sdg_name?: string | null;
             /** Sdg Keyword */
             sdg_keyword?: string | null;
+            /** Sdg Rationale */
+            sdg_rationale?: string | null;
+        };
+        /** BestReferenceClaim */
+        BestReferenceClaim: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Section Title */
+            section_title: string | null;
+            /** Sentence Text */
+            sentence_text: string;
+            /** Local Context */
+            local_context: string;
+        };
+        /**
+         * BestReferenceRead
+         * @description The single reference this paper should cite -- one pick across the
+         *     whole draft, not one per claim. `meets_threshold`/`is_recommended` let
+         *     the UI show *something* even on a weak match rather than a blank page,
+         *     while still being honest that it's weak.
+         */
+        BestReferenceRead: {
+            recommendation: components["schemas"]["RecommendationRead"];
+            claim: components["schemas"]["BestReferenceClaim"];
+            reference: components["schemas"]["ReferenceDetail"];
+            /** Meets Threshold */
+            meets_threshold: boolean;
+            /** Is Recommended */
+            is_recommended: boolean;
+            /** Min Score Threshold */
+            min_score_threshold: number;
+            /** Recommended Score Threshold */
+            recommended_score_threshold: number;
         };
         /** Body_import_references_api_v1_library_import_post */
         Body_import_references_api_v1_library_import_post: {
@@ -655,6 +738,25 @@ export interface components {
          * @enum {string}
          */
         InsertionMode: "tracked_changes" | "direct" | "placeholder";
+        /** ParagraphRewriteRead */
+        ParagraphRewriteRead: {
+            /** Paragraph */
+            paragraph: string;
+            /** In Text Citation */
+            in_text_citation: string;
+            /** Bibliography Entry */
+            bibliography_entry: string;
+            /** Style */
+            style: string;
+        };
+        /** ParagraphRewriteRequest */
+        ParagraphRewriteRequest: {
+            /**
+             * Style
+             * @default APA
+             */
+            style: string;
+        };
         /** RecommendationRead */
         RecommendationRead: {
             /**
@@ -709,6 +811,49 @@ export interface components {
             failed: number;
             /** Embedded */
             embedded: number;
+        };
+        /**
+         * ReferenceDetail
+         * @description The fuller "view details of the chosen paper" picture -- everything
+         *     ReferenceSummary has, plus the fields only worth showing once a paper
+         *     has actually been singled out as the one to cite.
+         */
+        ReferenceDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /** Authors */
+            authors: unknown[] | null;
+            /** Year */
+            year: number | null;
+            /** Source Title */
+            source_title: string | null;
+            /** Doi */
+            doi: string | null;
+            /** Scopus Url */
+            scopus_url: string | null;
+            /** Abstract */
+            abstract: string | null;
+            /** Source Link */
+            source_link: string | null;
+            /** Citation Count */
+            citation_count: number | null;
+            /** Document Type */
+            document_type: string | null;
+            /** Field Of Study */
+            field_of_study: string | null;
+            /** Author Keywords */
+            author_keywords: string[] | null;
+            /** Index Keywords */
+            index_keywords: string[] | null;
+            /** Subject Areas */
+            subject_areas: string[] | null;
+            /** Publisher Url */
+            publisher_url: string | null;
         };
         /** ReferenceRead */
         ReferenceRead: {
@@ -1211,6 +1356,37 @@ export interface operations {
             };
         };
     };
+    best_reference_for_draft_api_v1_drafts__draft_id__best_reference_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BestReferenceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     accepted_citations_for_draft_api_v1_drafts__draft_id__accepted_citations_get: {
         parameters: {
             query?: never;
@@ -1231,6 +1407,41 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rewrite_paragraph_for_recommendation_api_v1_recommendations__recommendation_id__rewrite_paragraph_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recommendation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ParagraphRewriteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParagraphRewriteRead"];
                 };
             };
             /** @description Validation Error */
