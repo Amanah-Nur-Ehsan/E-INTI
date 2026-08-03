@@ -12,6 +12,7 @@ class EnrichmentProvider(StrEnum):
     DATASET = "DATASET"
     SCOPUS = "SCOPUS"
     SEMANTIC_SCHOLAR = "SEMANTIC_SCHOLAR"
+    OPENALEX = "OPENALEX"
     CROSSREF = "CROSSREF"
     NONE = "NONE"
 

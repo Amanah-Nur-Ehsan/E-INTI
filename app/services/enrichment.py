@@ -1,10 +1,14 @@
 """Enrichment orchestration: provider chain + the reference-updating stage.
 
-Chain order is Scopus (authoritative) -> Semantic Scholar -> Crossref.
-The first provider that returns an abstract wins and the reference is
-ENRICHED. Crossref can only contribute bibliographic metadata, so a row
-that gets no further than Crossref stays INCOMPLETE — the recommendation
-engine then treats it as INSUFFICIENT_EVIDENCE rather than guessing.
+Chain order is Scopus (authoritative) -> Semantic Scholar -> OpenAlex ->
+Crossref. The first provider that returns an abstract wins and the
+reference is ENRICHED. OpenAlex sits after Semantic Scholar rather than
+before it because Semantic Scholar is the stronger CS/ML source when it
+has the paper at all; OpenAlex's broader, less CS-skewed coverage is what
+catches papers Semantic Scholar simply never indexed. Crossref can only
+contribute bibliographic metadata, so a row that gets no further than
+Crossref stays INCOMPLETE — the recommendation engine then treats it as
+INSUFFICIENT_EVIDENCE rather than guessing.
 """
 
 from datetime import UTC, datetime
@@ -38,10 +42,16 @@ def get_enrichment_chain() -> list[EnrichmentProviderClient]:
         return [MockScopusService()]
 
     from app.services.crossref_service import CrossrefService
+    from app.services.openalex_service import OpenAlexService
     from app.services.scopus_service import ScopusService
     from app.services.semantic_scholar_service import SemanticScholarService
 
-    return [ScopusService(), SemanticScholarService(), CrossrefService()]
+    return [
+        ScopusService(),
+        SemanticScholarService(),
+        OpenAlexService(),
+        CrossrefService(),
+    ]
 
 
 def _identity(reference: ReferencePaper) -> RefIdentity:
