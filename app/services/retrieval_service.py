@@ -8,11 +8,13 @@ run rather than per claim.
 import re
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 import numpy as np
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 
 log = get_logger(__name__)
@@ -145,6 +147,16 @@ def keyword_overlap(claim_keywords: list[str], candidate: Candidate) -> float:
     return jaccard(claim_tokens, candidate_tokens)
 
 
+def min_recommendable_year() -> int:
+    """Oldest publication year still eligible as a candidate, e.g. 2022 in
+    2026 for the default 5-year window. Recomputed from wall-clock time on
+    every call rather than cached, so the window rolls forward on its own
+    as the calendar year changes.
+    """
+    settings = get_settings()
+    return datetime.now(UTC).year - (settings.citation_recency_years - 1)
+
+
 def vector_search(
     session: Session,
     query_vector: np.ndarray,
@@ -157,10 +169,11 @@ def vector_search(
             "       1 - (embedding <=> CAST(:v AS vector)) AS semantic_similarity "
             "FROM reference_papers "
             "WHERE embedding IS NOT NULL "
+            "  AND year >= :min_year "
             "ORDER BY embedding <=> CAST(:v AS vector) "
             "LIMIT :k"
         ),
-        {"v": str(query_vector.tolist()), "k": limit},
+        {"v": str(query_vector.tolist()), "k": limit, "min_year": min_recommendable_year()},
     ).all()
 
     return [

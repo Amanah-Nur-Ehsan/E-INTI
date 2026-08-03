@@ -82,6 +82,13 @@ class Settings(BaseSettings):
     best_reference_min_score: float = 65.0
     best_reference_recommended_score: float = 75.0
 
+    #: References older than this many years (inclusive of the current
+    #: year) are never retrieved as candidates -- e.g. 5 in 2026 means only
+    #: 2022-2026. A fixed institutional rule, not a per-run toggle; a
+    #: reference with no year on file is treated as unverifiable recency
+    #: and excluded the same as one that's too old.
+    citation_recency_years: int = 5
+
     # Misc
     upload_dir: Path = Path("./uploads")
     celery_task_always_eager: bool = False
