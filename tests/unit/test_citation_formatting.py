@@ -241,3 +241,116 @@ def test_join_in_text_multiple():
 
 def test_join_in_text_empty():
     assert join_in_text([]) == ""
+
+
+# ------------------------------------------------------- Chicago / IEEE --
+
+
+def _text(entry) -> str:
+    return "".join(seg.text for seg in entry)
+
+
+def test_unsupported_style_still_rejected():
+    with pytest.raises(ValueError, match="Unsupported citation style"):
+        build_citation_context([FakeRef(title="A Paper")], style="MLA")
+
+
+def test_style_name_is_case_insensitive():
+    ctx = build_citation_context([FakeRef(title="A Paper", year=2023)], style="chicago")
+    assert ctx.style == "CHICAGO"
+
+
+def test_chicago_in_text_uses_and_and_no_comma():
+    """Chicago author-date: '(Smith and Doe 2023)' -- APA's '&' and the
+    comma before the year are both APA-specific."""
+    ref = FakeRef(title="A Paper", year=2023, authors=[{"name": "Smith, J."}, {"name": "Doe, K."}])
+    ctx = build_citation_context([ref], style="CHICAGO")
+    assert ctx.in_text(ref.id) == "(Smith and Doe 2023)"
+
+
+def test_chicago_three_authors_use_et_al_in_text():
+    ref = FakeRef(
+        title="A Paper",
+        year=2023,
+        authors=[{"name": "Smith, J."}, {"name": "Doe, K."}, {"name": "Lee, M."}],
+    )
+    ctx = build_citation_context([ref], style="CHICAGO")
+    assert ctx.in_text(ref.id) == "(Smith et al. 2023)"
+
+
+def test_chicago_entry_inverts_only_the_first_author():
+    """Alphabetising needs the first author inverted; the rest read naturally."""
+    ref = FakeRef(
+        title="A Paper",
+        year=2023,
+        authors=[{"name": "Smith, J. A."}, {"name": "Doe, K."}],
+        source_title="Nature",
+    )
+    ctx = build_citation_context([ref], style="CHICAGO")
+    entry = _text(ctx.entry(ref.id))
+    assert entry.startswith("Smith, J. A., and K. Doe. 2023.")
+    assert "“A Paper.”" in entry
+
+
+def test_chicago_does_not_double_a_period_after_an_abbreviated_journal():
+    ref = FakeRef(
+        title="A Paper", year=2023, authors=[{"name": "Smith, J."}],
+        source_title="IEEE Trans. Biomed. Eng.",
+    )
+    entry = _text(build_citation_context([ref], style="CHICAGO").entry(ref.id))
+    assert "Eng.." not in entry
+    assert "Eng." in entry
+
+
+def test_ieee_in_text_is_a_bracketed_number_in_supply_order():
+    first = FakeRef(title="Zebra Paper", year=2023, authors=[{"name": "Zulu, A."}])
+    second = FakeRef(title="Alpha Paper", year=2021, authors=[{"name": "Adams, B."}])
+    ctx = build_citation_context([first, second], style="IEEE")
+    # Numbered by order supplied, NOT alphabetised the way APA/Chicago are.
+    assert ctx.in_text(first.id) == "[1]"
+    assert ctx.in_text(second.id) == "[2]"
+
+
+def test_ieee_bibliography_keeps_numeric_order_not_alphabetical():
+    first = FakeRef(title="Zebra Paper", year=2023, authors=[{"name": "Zulu, A."}])
+    second = FakeRef(title="Alpha Paper", year=2021, authors=[{"name": "Adams, B."}])
+    ctx = build_citation_context([first, second], style="IEEE")
+    ordered = [rid for rid, _entry in ctx.bibliography()]
+    assert ordered == [first.id, second.id]
+
+
+def test_ieee_entry_puts_initials_before_surname():
+    ref = FakeRef(
+        title="A Paper", year=2023,
+        authors=[{"name": "Smith, J. A."}, {"name": "Doe, K."}],
+        source_title="Nature", doi="10.1/x",
+    )
+    entry = _text(build_citation_context([ref], style="IEEE").entry(ref.id))
+    assert entry.startswith("[1] J. A. Smith and K. Doe, “A Paper,”")
+    assert "[Online]. Available: https://doi.org/10.1/x" in entry
+
+
+def test_ieee_truncates_beyond_six_authors():
+    authors = [{"name": f"Author{i}, X."} for i in range(8)]
+    ref = FakeRef(title="Many Authors", year=2023, authors=authors)
+    entry = _text(build_citation_context([ref], style="IEEE").entry(ref.id))
+    assert "et al." in entry
+    assert "Author7" not in entry  # the 8th author must not be listed
+
+
+def test_ieee_skips_year_letter_disambiguation():
+    """Bracketed numbers already disambiguate, so '2024a'/'2024b' would be
+    noise -- unlike APA/Chicago where the year *is* the identifier."""
+    a = FakeRef(title="Alpha Study", year=2024, authors=[{"name": "Smith, J."}])
+    b = FakeRef(title="Beta Study", year=2024, authors=[{"name": "Smith, J."}])
+    ctx = build_citation_context([a, b], style="IEEE")
+    assert "2024a" not in _text(ctx.entry(a.id))
+    assert "2024b" not in _text(ctx.entry(b.id))
+
+
+def test_apa_and_chicago_still_disambiguate_the_year():
+    a = FakeRef(title="Alpha Study", year=2024, authors=[{"name": "Smith, J."}])
+    b = FakeRef(title="Beta Study", year=2024, authors=[{"name": "Smith, J."}])
+    for style, expected in (("APA", "(Smith, 2024a)"), ("CHICAGO", "(Smith 2024a)")):
+        ctx = build_citation_context([a, b], style=style)
+        assert ctx.in_text(a.id) == expected

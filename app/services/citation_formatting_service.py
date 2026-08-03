@@ -1,11 +1,20 @@
-"""APA 7 in-text citations and reference-list entries.
+"""In-text citations and reference-list entries for APA 7, Chicago
+author-date, and IEEE.
 
 Pure and DB-free by design — every rule here is unit-tested in isolation.
 A `CitationContext` is built once per export over the *entire* accepted
-set, because year-letter disambiguation ("2024a" vs "2024b") is a
-property of the whole bibliography, not of any single reference: whether
-a citation needs a letter suffix depends on what else is being cited
-alongside it.
+set, because both of the cross-reference properties live at bibliography
+scope, not per-reference:
+
+* APA/Chicago year-letter disambiguation ("2024a" vs "2024b") depends on
+  what *else* is being cited alongside a reference.
+* IEEE numbering ("[1]", "[2]") is an ordinal over the whole citation
+  set, so a reference has no number in isolation.
+
+Author data comes from Scopus/dataset imports as initials, so Chicago
+entries render "Smith, J. A." rather than Chicago's preferred full given
+name — a faithful degradation to the data we actually have, not a
+formatting bug.
 """
 
 import re
@@ -20,6 +29,10 @@ _GIVEN_FIRST_INITIALS = re.compile(r"^((?:[A-Z]\.\s*)+)\s*([A-Za-z\-']+)$")
 
 MAX_ENTRY_AUTHORS = 20
 ENTRY_ELLIPSIS_KEEP_FIRST = 19
+
+#: Styles the formatter can render. Kept as a module constant so the API
+#: layer and the UI can validate against one source of truth.
+SUPPORTED_STYLES = frozenset({"APA", "CHICAGO", "IEEE"})
 
 
 @dataclass(frozen=True)
@@ -131,10 +144,78 @@ def _entry_authors(authors: list[AuthorName]) -> str:
     return joined if joined.endswith(".") else f"{joined}."
 
 
+def _in_text_authors_chicago(authors: list[AuthorName], title: str | None) -> str:
+    """Chicago author-date uses 'and' where APA uses '&', and no comma
+    before the year.
+    """
+    if not authors:
+        return _short_title(title)
+    if len(authors) == 1:
+        return authors[0].display_family
+    if len(authors) == 2:
+        return f"{authors[0].display_family} and {authors[1].display_family}"
+    return f"{authors[0].display_family} et al."
+
+
+#: Chicago lists up to ten authors in the bibliography, then truncates.
+CHICAGO_MAX_ENTRY_AUTHORS = 10
+CHICAGO_ELLIPSIS_KEEP_FIRST = 7
+#: IEEE lists up to six; beyond that, first three then "et al."
+IEEE_MAX_ENTRY_AUTHORS = 6
+IEEE_ELLIPSIS_KEEP_FIRST = 3
+
+
+def _entry_authors_chicago(authors: list[AuthorName]) -> str:
+    """First author inverted (for alphabetising), the rest natural order."""
+    if not authors:
+        return ""
+
+    def natural(a: AuthorName) -> str:
+        return f"{a.given_initials} {a.display_family}".strip()
+
+    first = f"{authors[0].display_family}, {authors[0].given_initials}".rstrip(", ")
+    if len(authors) == 1:
+        joined = first
+    elif len(authors) == 2:
+        joined = f"{first}, and {natural(authors[1])}"
+    elif len(authors) <= CHICAGO_MAX_ENTRY_AUTHORS:
+        middle = ", ".join(natural(a) for a in authors[1:-1])
+        joined = f"{first}, {middle}, and {natural(authors[-1])}"
+    else:
+        kept = ", ".join(natural(a) for a in authors[1:CHICAGO_ELLIPSIS_KEEP_FIRST])
+        joined = f"{first}, {kept}, et al"
+    return joined if joined.endswith(".") else f"{joined}."
+
+
+def _entry_authors_ieee(authors: list[AuthorName]) -> str:
+    """IEEE puts initials first for every author: 'J. A. Smith'."""
+    if not authors:
+        return ""
+
+    def natural(a: AuthorName) -> str:
+        return f"{a.given_initials} {a.display_family}".strip()
+
+    if len(authors) > IEEE_MAX_ENTRY_AUTHORS:
+        return ", ".join(natural(a) for a in authors[:IEEE_ELLIPSIS_KEEP_FIRST]) + ", et al."
+    names = [natural(a) for a in authors]
+    if len(names) == 1:
+        return names[0]
+    if len(names) == 2:
+        return f"{names[0]} and {names[1]}"
+    return ", ".join(names[:-1]) + f", and {names[-1]}"
+
+
+def _reference_link(ref) -> str | None:
+    doi = getattr(ref, "doi", None)
+    if doi:
+        return f"https://doi.org/{doi}"
+    return getattr(ref, "scopus_url", None) or getattr(ref, "source_link", None)
+
+
 @dataclass(frozen=True)
 class Segment:
     """One run of reference-list text; `italic` marks journal/book titles
-    so the DOCX writer can preserve APA's italicization without the
+    so the DOCX writer can preserve the style's italicization without the
     formatting service knowing anything about python-docx.
     """
 
@@ -167,13 +248,58 @@ def _build_entry(
     if source_title:
         segments.append(Segment(source_title, italic=True))
 
-    doi = getattr(ref, "doi", None)
-    link = doi and f"https://doi.org/{doi}" or getattr(ref, "scopus_url", None) or getattr(
-        ref, "source_link", None
-    )
+    link = _reference_link(ref)
     if link:
         prefix = ", " if source_title else " "
         segments.append(Segment(f"{prefix}{link}"))
+    return tuple(segments)
+
+
+def _build_entry_chicago(
+    authors: list[AuthorName], year: int | None, title: str | None, ref, year_suffix: str
+) -> tuple[Segment, ...]:
+    """Smith, J. A. 2023. "Title." *Journal*. https://doi.org/..."""
+    segments: list[Segment] = []
+    author_text = _entry_authors_chicago(authors)
+    if author_text:
+        segments.append(Segment(f"{author_text} "))
+    segments.append(Segment(f"{_year_str(year)}{year_suffix}. "))
+    segments.append(Segment(f"“{title or 'Untitled'}.” "))
+
+    source_title = getattr(ref, "source_title", None)
+    if source_title:
+        segments.append(Segment(source_title, italic=True))
+        # Abbreviated journal names often already end in a period
+        # ("IEEE Trans. Biomed. Eng."); don't double it.
+        if not source_title.rstrip().endswith("."):
+            segments.append(Segment("."))
+
+    link = _reference_link(ref)
+    if link:
+        segments.append(Segment(f" {link}"))
+    return tuple(segments)
+
+
+def _build_entry_ieee(
+    number: int, authors: list[AuthorName], year: int | None, title: str | None, ref
+) -> tuple[Segment, ...]:
+    """[1] J. A. Smith, "Title," *Journal*, 2023. [Online]. Available: ..."""
+    segments: list[Segment] = [Segment(f"[{number}] ")]
+    author_text = _entry_authors_ieee(authors)
+    if author_text:
+        segments.append(Segment(f"{author_text}, "))
+    segments.append(Segment(f"“{title or 'Untitled'},” "))
+
+    source_title = getattr(ref, "source_title", None)
+    if source_title:
+        segments.append(Segment(source_title, italic=True))
+        segments.append(Segment(", "))
+
+    segments.append(Segment(f"{_year_str(year)}."))
+
+    link = _reference_link(ref)
+    if link:
+        segments.append(Segment(f" [Online]. Available: {link}"))
     return tuple(segments)
 
 
@@ -185,16 +311,26 @@ class CitationContext:
     """
 
     def __init__(self, references: Sequence, style: str = "APA"):
-        if style != "APA":
-            raise ValueError(f"Unsupported citation style: {style!r} (only APA is implemented)")
+        normalized = (style or "").strip().upper()
+        if normalized not in SUPPORTED_STYLES:
+            raise ValueError(
+                f"Unsupported citation style: {style!r} "
+                f"(supported: {', '.join(sorted(SUPPORTED_STYLES))})"
+            )
+        self.style = normalized
 
         self._by_id: dict[uuid.UUID, FormattedCitation] = {}
         self._order: list[uuid.UUID] = []
 
         parsed = [(ref, parse_authors(ref.authors)) for ref in references]
 
+        if normalized == "IEEE":
+            self._build_ieee(parsed)
+            return
+
         # Group by (author-or-title key, year) to find which references need
-        # a disambiguating letter suffix.
+        # a disambiguating letter suffix. IEEE skips this entirely: its
+        # bracketed numbers already disambiguate.
         groups: dict[tuple[str, int | None], list] = {}
         for ref, authors in parsed:
             key = (_author_year_key(authors, ref.title), ref.year)
@@ -212,12 +348,28 @@ class CitationContext:
 
         for ref, authors in parsed:
             suffix = suffix_by_id.get(ref.id, "")
-            in_text_authors = _in_text_authors(authors, ref.title)
-            in_text = f"({in_text_authors}, {_year_str(ref.year)}{suffix})"
-            entry = _build_entry(authors, ref.year, ref.title, ref, suffix)
+            if normalized == "CHICAGO":
+                in_text = f"({_in_text_authors_chicago(authors, ref.title)} {_year_str(ref.year)}{suffix})"
+                entry = _build_entry_chicago(authors, ref.year, ref.title, ref, suffix)
+            else:
+                in_text = f"({_in_text_authors(authors, ref.title)}, {_year_str(ref.year)}{suffix})"
+                entry = _build_entry(authors, ref.year, ref.title, ref, suffix)
             sort_key = (_author_year_key(authors, ref.title), ref.year or 0, suffix)
 
             self._by_id[ref.id] = FormattedCitation(in_text=in_text, entry=entry, sort_key=sort_key)
+            self._order.append(ref.id)
+
+    def _build_ieee(self, parsed: list) -> None:
+        """Numbered in the order references were supplied -- which is
+        acceptance order, i.e. roughly the order they appear in the paper,
+        which is what IEEE numbering is supposed to reflect.
+        """
+        for index, (ref, authors) in enumerate(parsed, start=1):
+            self._by_id[ref.id] = FormattedCitation(
+                in_text=f"[{index}]",
+                entry=_build_entry_ieee(index, authors, ref.year, ref.title, ref),
+                sort_key=(index,),
+            )
             self._order.append(ref.id)
 
     def in_text(self, reference_id: uuid.UUID) -> str:
