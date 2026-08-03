@@ -197,7 +197,18 @@ def recommend_for_claim(
 
 
 def recommend_for_draft(session: Session, draft_id: uuid.UUID) -> dict:
-    """Stage body: recommend references for every citation-worthy claim."""
+    """Stage body: recommend references for every citation-worthy claim.
+
+    Verification (stage 4) is the only serial, LLM-paced stage, so it is the
+    entire runtime cost of this stage on a real paper. The product now shows
+    one ranked shortlist of references for the whole draft (see
+    app/api/routes/recommendations.py::best_references), not a per-claim
+    citation list -- so verifying all 137 claims of a real paper to produce
+    a 3-5 item shortlist is mostly wasted spend. Only the claims whose best
+    reranked candidate could plausibly place in that shortlist are worth
+    verifying; the rest are skipped entirely, cutting a 137-claim draft to
+    ~settings.verify_claim_limit LLM calls.
+    """
     claims = list(
         session.execute(
             select(Claim)
@@ -210,14 +221,35 @@ def recommend_for_draft(session: Session, draft_id: uuid.UUID) -> dict:
 
     corpus = LibraryCorpus(session)
 
-    # Stages 1-3 batched across every claim, then stages 4-5 per claim --
-    # the LLM calls in stage 4 stay serial because they are what the rate
-    # limiter paces.
+    # Stages 1-3 batched across every claim -- cheap, local-model work.
     prepared = _retrieve_and_prerank(session, claims, corpus)
     all_scores = _rerank_all(prepared)
 
+    # Rank claims by their single best reranked candidate and only verify
+    # the top N. A claim whose best candidate isn't even a strong reranker
+    # match has no realistic path into a whole-paper top-3-5 shortlist, so
+    # spending an LLM call on it buys nothing.
+    limit = get_settings().verify_claim_limit
+    ranked_items = sorted(
+        zip(prepared, all_scores, strict=True),
+        key=lambda pair: max(pair[1], default=0.0),
+        reverse=True,
+    )
+    to_verify = ranked_items[:limit]
+
+    # Clear every claim's stale rows up front: a claim that verified last
+    # run but falls outside the limit this run (fewer/differently-scored
+    # candidates, a changed verify_claim_limit) must not keep old rows.
+    prepared_claim_ids = [item.claim.id for item, _ in ranked_items]
+    if prepared_claim_ids:
+        session.execute(
+            delete(CitationRecommendation).where(
+                CitationRecommendation.claim_id.in_(prepared_claim_ids)
+            )
+        )
+
     total = 0
-    for item, reranker_scores in zip(prepared, all_scores, strict=True):
+    for item, reranker_scores in to_verify:
         total += _verify_and_persist(session, item.claim, item.candidates, reranker_scores)
 
     return {"claims_processed": len(claims), "recommendations": total}

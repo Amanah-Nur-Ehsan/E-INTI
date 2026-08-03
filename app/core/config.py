@@ -63,6 +63,15 @@ class Settings(BaseSettings):
     verify_limit: int = 3
     #: Sentences per Tier-1 classification call.
     classify_batch_size: int = 10
+    #: The product now surfaces one ranked shortlist of references for the
+    #: whole paper (see best_reference_* below), not a per-claim citation
+    #: list -- so verifying every citation-worthy claim is mostly wasted
+    #: Tier-2 spend. Only the claims whose best reranked candidate could
+    #: plausibly place in that shortlist are worth an LLM call; the rest
+    #: are cheap to skip since a paper's shortlist rarely needs more than a
+    #: handful of well-matched claims to be found. On a 137-claim paper this
+    #: is the difference between ~137 paced LLM calls and ~20.
+    verify_claim_limit: int = 20
 
     # "Which single reference should this paper cite" thresholds. Below
     # min_score the match is too weak to present as usable; at or above

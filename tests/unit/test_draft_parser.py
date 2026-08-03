@@ -83,6 +83,26 @@ def test_local_context_window(parsed_docx):
     assert parsed_docx.sentences[2].text in context
 
 
+def test_docx_with_corrupt_embedded_image_still_parses():
+    """A truncated image must not cost the user their whole upload.
+
+    The fixture is a real .docx whose word/media/image1.png bytes no longer
+    match their stored CRC -- python-docx reads every part eagerly, so
+    without the repair path this raises BadZipFile and the run dies in
+    PARSING (exactly what happened on a real upload).
+    """
+    parsed = parse_file(FIXTURES / "corrupt_image_draft.docx")
+
+    assert parsed.sentences
+    text = parsed.raw_text
+    # Text on both sides of the corrupt image survives, not just the first half.
+    assert "Machine learning improves fraud detection" in text
+    assert "A second paragraph that must survive the repair intact." in text
+    # The repair must not disturb the offset invariant everything depends on.
+    for sentence in parsed.sentences:
+        assert text[sentence.char_start : sentence.char_end] == sentence.text
+
+
 def test_unsupported_format_rejected(tmp_path):
     bad = tmp_path / "draft.pdf"
     bad.write_bytes(b"%PDF-1.4")

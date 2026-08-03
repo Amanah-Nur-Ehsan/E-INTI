@@ -330,7 +330,9 @@ export default function Home() {
                     format: "docx",
                     citation_style: "APA",
                     insertion_mode: "tracked_changes",
-                    include_audit_report: true,
+                    // The audit table is an internal QA report, not manuscript
+                    // content -- the exported paper should come back clean.
+                    include_audit_report: false,
                   });
                   window.location.href = downloadUrl(exportResult.id);
                 }}

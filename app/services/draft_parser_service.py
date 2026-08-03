@@ -7,6 +7,7 @@ assigned, raw_text is assembled once, and spaCy runs per block so sentence
 offsets compose additively onto the block offset.
 """
 
+import io
 import re
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -245,10 +246,67 @@ def _para_text(paragraph) -> str:
     return "".join(parts)
 
 
+#: Smallest valid PNG (1x1 transparent). Substituted for embedded images
+#: whose bytes fail their CRC check, so the package's relationship graph
+#: stays intact while the unreadable pixels are dropped.
+_PLACEHOLDER_PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
+    "890000000a49444154789c63000100000500010d0a2db40000000049454e44ae426082"
+)
+
+
+def _repair_docx_zip(path: Path) -> io.BytesIO:
+    """Rewrite a .docx whose zip has corrupt members, dropping their bytes.
+
+    Word files that have been through email, cloud sync, or a partial
+    upload routinely carry a truncated image whose CRC no longer matches,
+    and python-docx reads *every* part eagerly -- so one bad PNG makes an
+    otherwise perfectly readable document unparseable. We only ever want
+    the text, so a corrupt part is replaced (images with a 1x1 placeholder,
+    anything else with empty bytes) rather than dropped outright, which
+    would break the relationships that reference it.
+    """
+    import zipfile
+
+    repaired = io.BytesIO()
+    damaged: list[str] = []
+
+    with zipfile.ZipFile(path) as source:
+        with zipfile.ZipFile(repaired, "w", zipfile.ZIP_DEFLATED) as target:
+            for info in source.infolist():
+                try:
+                    data = source.read(info.filename)
+                except (zipfile.BadZipFile, EOFError, OSError):
+                    damaged.append(info.filename)
+                    lowered = info.filename.lower()
+                    is_image = lowered.startswith("word/media/") or lowered.endswith(
+                        (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".emf", ".wmf")
+                    )
+                    data = _PLACEHOLDER_PNG if is_image else b""
+                target.writestr(info.filename, data)
+
+    if not damaged:
+        # The zip failed for a reason we haven't handled; let the caller's
+        # retry surface the original error rather than pretending we fixed it.
+        raise ValueError("docx zip reported corrupt but every member read cleanly")
+
+    log.warning("docx_corrupt_parts_replaced", path=str(path), parts=damaged)
+    repaired.seek(0)
+    return repaired
+
+
 def parse_docx(path: Path) -> ParsedDraft:
+    import zipfile
+
     from docx import Document
 
-    document = Document(str(path))
+    try:
+        document = Document(str(path))
+    except zipfile.BadZipFile:
+        # Text is all we need; a damaged embedded image must not cost the
+        # user their whole upload.
+        document = Document(_repair_docx_zip(path))
+
     raw_blocks: list[tuple[str, bool, str | None]] = []
 
     for paragraph in iter_docx_paragraphs(document):
