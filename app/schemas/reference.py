@@ -8,7 +8,14 @@ class ImportResult(BaseModel):
     imported: int
     skipped_duplicates: int
     skipped_invalid: int
+    backfilled_abstracts: int
     warnings: list[str]
+
+
+class MissingAbstractsByYear(BaseModel):
+    year: int | None
+    missing: int
+    total: int
 
 
 class ReferenceRead(BaseModel):

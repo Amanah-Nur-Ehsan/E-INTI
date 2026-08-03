@@ -16,6 +16,7 @@ type ExportRead = components["schemas"]["ExportRead"];
 type ExportRequest = components["schemas"]["ExportRequest"];
 type BestReferenceRead = components["schemas"]["BestReferenceRead"];
 type ParagraphRewriteRead = components["schemas"]["ParagraphRewriteRead"];
+type MissingAbstractsByYear = components["schemas"]["MissingAbstractsByYear"];
 
 const RUNNING_STATUSES = new Set(["PENDING", "RUNNING"]);
 
@@ -50,6 +51,14 @@ export function useRefreshLibrary() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["library", "status"] });
     },
+  });
+}
+
+export function useMissingAbstractsByYear(enabled = true) {
+  return useQuery({
+    queryKey: ["library", "missing-abstracts-by-year"],
+    queryFn: () => api.get("/api/v1/library/missing-abstracts-by-year"),
+    enabled,
   });
 }
 
@@ -203,4 +212,5 @@ export type {
   ExportRequest,
   BestReferenceRead,
   ParagraphRewriteRead,
+  MissingAbstractsByYear,
 };

@@ -13,6 +13,7 @@ import {
   useCreateExport,
   useImportLibrary,
   useLibraryStatus,
+  useMissingAbstractsByYear,
   useRefreshLibrary,
   useRunAnalysis,
   useUploadDraft,
@@ -81,6 +82,7 @@ function LibraryStrip() {
   const { data: status } = useLibraryStatus();
   const importLibrary = useImportLibrary();
   const refreshLibrary = useRefreshLibrary();
+  const { data: missingByYear } = useMissingAbstractsByYear(open);
 
   return (
     <Card className="p-3">
@@ -103,7 +105,11 @@ function LibraryStrip() {
       {open && (
         <div className="mt-3 flex flex-col gap-3 border-t pt-3">
           <div className="flex flex-col gap-2">
-            <span className="text-xs text-muted-foreground">Import references (xlsx, csv)</span>
+            <span className="text-xs text-muted-foreground">
+              Import references (xlsx, csv) — re-upload the same file with an ABSTRACT column
+              filled in to backfill abstracts on rows already in the library, without touching
+              anything else on them.
+            </span>
             <div className="flex flex-wrap items-center gap-2">
               <FilePicker
                 file={selectedFile}
@@ -146,6 +152,9 @@ function LibraryStrip() {
               Imported {importLibrary.data.imported}, skipped{" "}
               {importLibrary.data.skipped_duplicates} duplicate
               {importLibrary.data.skipped_duplicates === 1 ? "" : "s"}
+              {importLibrary.data.backfilled_abstracts > 0
+                ? `, backfilled ${importLibrary.data.backfilled_abstracts} abstract${importLibrary.data.backfilled_abstracts === 1 ? "" : "s"}`
+                : ""}
               {importLibrary.data.skipped_invalid > 0
                 ? `, ${importLibrary.data.skipped_invalid} invalid row${importLibrary.data.skipped_invalid === 1 ? "" : "s"}`
                 : ""}
@@ -166,6 +175,21 @@ function LibraryStrip() {
               enriched {status.enriched} · incomplete {status.incomplete} · failed {status.failed} ·
               embedded {status.embedded}
             </span>
+          )}
+
+          {missingByYear && missingByYear.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">
+                Missing abstracts by year (worst first) — fill these in first:
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {missingByYear.map((row) => (
+                  <Badge key={row.year ?? "unknown"} variant="outline" className="text-xs">
+                    {row.year ?? "Unknown year"}: {row.missing}/{row.total}
+                  </Badge>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       )}

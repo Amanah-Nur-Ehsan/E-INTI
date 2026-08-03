@@ -54,8 +54,32 @@ async def test_reimport_skips_duplicates(client):
         "imported": 0,
         "skipped_duplicates": 12,
         "skipped_invalid": 0,
+        "backfilled_abstracts": 0,
         "warnings": [],
     }
+
+
+async def test_reimport_backfills_missing_abstracts(client, db_session):
+    await _import(client)
+    # Re-import a version of the same dataset where the previously-abstract-less
+    # rows now carry a real abstract -- this is the "add abstracts in the xlsx
+    # and re-upload" workflow, not a fresh import.
+    resp = await _import(client, "sample_dataset_with_abstracts.xlsx")
+    body = resp.json()
+    assert body["imported"] == 0
+    assert body["backfilled_abstracts"] == 5
+    assert body["skipped_duplicates"] == 7
+
+    refs = db_session.execute(select(ReferencePaper).order_by(ReferencePaper.original_row_number))
+    refs = list(refs.scalars())
+    no_abstract_before = refs[10]
+    assert no_abstract_before.abstract is not None
+    assert no_abstract_before.enrichment_status == EnrichmentStatus.ENRICHED
+    assert no_abstract_before.enrichment_provider == EnrichmentProvider.DATASET
+
+    # A row that already had an abstract from the first import is untouched.
+    already_had_one = refs[0]
+    assert already_had_one.title.startswith("Machine Learning Methods")
 
 
 async def test_import_csv_equivalent_to_xlsx(client, db_session):
@@ -70,6 +94,21 @@ async def test_import_rejects_dataset_without_required_columns(client):
     )
     assert resp.status_code == 422
     assert "title" in resp.json()["detail"]
+
+
+async def test_missing_abstracts_by_year(client):
+    await _import(client)
+
+    resp = await client.get("/api/v1/library/missing-abstracts-by-year")
+    assert resp.status_code == 200
+    body = resp.json()
+
+    # Every returned year actually has at least one row missing an abstract,
+    # and none of them have zero missing (that's the point of `having`).
+    assert all(row["missing"] > 0 for row in body)
+    assert sum(row["missing"] for row in body) == 5
+    # Sorted with the worst-covered year first.
+    assert body == sorted(body, key=lambda r: -r["missing"])
 
 
 async def test_status_and_list_endpoints(client):

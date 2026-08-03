@@ -112,6 +112,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/missing-abstracts-by-year": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Missing Abstracts By Year
+         * @description Where to focus manual abstract collection: which publication years
+         *     have the most references still missing an abstract, so a user filling
+         *     them in by hand (or re-exporting from Scopus) knows where to start.
+         */
+        get: operations["missing_abstracts_by_year_api_v1_library_missing_abstracts_by_year_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library": {
         parameters: {
             query?: never;
@@ -730,6 +752,8 @@ export interface components {
             skipped_duplicates: number;
             /** Skipped Invalid */
             skipped_invalid: number;
+            /** Backfilled Abstracts */
+            backfilled_abstracts: number;
             /** Warnings */
             warnings: string[];
         };
@@ -738,6 +762,15 @@ export interface components {
          * @enum {string}
          */
         InsertionMode: "tracked_changes" | "direct" | "placeholder";
+        /** MissingAbstractsByYear */
+        MissingAbstractsByYear: {
+            /** Year */
+            year: number | null;
+            /** Missing */
+            missing: number;
+            /** Total */
+            total: number;
+        };
         /** ParagraphRewriteRead */
         ParagraphRewriteRead: {
             /** Paragraph */
@@ -1121,6 +1154,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReferenceCounts"];
+                };
+            };
+        };
+    };
+    missing_abstracts_by_year_api_v1_library_missing_abstracts_by_year_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MissingAbstractsByYear"][];
                 };
             };
         };

@@ -53,6 +53,7 @@ class ImportSummary:
     imported: int = 0
     skipped_duplicates: int = 0
     skipped_invalid: int = 0
+    backfilled_abstracts: int = 0
     warnings: list[str] = field(default_factory=list)
 
 
@@ -204,20 +205,33 @@ def normalize_title(title: str) -> str:
 
 def import_dataset(session: Session, content: bytes, filename: str) -> ImportSummary:
     """Import into the shared library. Duplicates (by DOI, then EID, then
-    normalized title for rows with neither) are skipped against the whole
-    library, not just this file -- re-uploading the same dataset, or one
-    with overlapping rows, adds only what's actually new.
+    normalized title for rows with neither) are matched against the whole
+    library, not just this file. A duplicate is normally just skipped --
+    except when the existing row has no abstract yet and this row's ABSTRACT
+    column does: that one field is backfilled onto the existing row (nothing
+    else is touched), so re-uploading the same dataset with abstracts added
+    is how a user without Scopus abstract entitlement supplies them directly.
     """
     frame = read_table(content, filename)
     mapping = map_columns(list(frame.columns))
     summary = ImportSummary()
 
     existing = session.execute(
-        select(ReferencePaper.doi, ReferencePaper.scopus_eid, ReferencePaper.title)
+        select(
+            ReferencePaper.id,
+            ReferencePaper.doi,
+            ReferencePaper.scopus_eid,
+            ReferencePaper.title,
+            ReferencePaper.abstract,
+        )
     ).all()
-    seen_dois = {d for d, _, _ in existing if d}
-    seen_eids = {e for _, e, _ in existing if e}
-    seen_titles = {normalize_title(t) for _, _, t in existing if t}
+    dois_to_id = {d: i for i, d, _, _, _ in existing if d}
+    eids_to_id = {e: i for i, _, e, _, _ in existing if e}
+    titles_to_id = {normalize_title(t): i for i, _, _, t, a in existing if t and not a}
+    has_abstract = {i for i, _, _, _, a in existing if a}
+    seen_dois = {d for _, d, _, _, _ in existing if d}
+    seen_eids = {e for _, _, e, _, _ in existing if e}
+    seen_titles = {normalize_title(t) for _, _, _, t, _ in existing if t}
 
     def col(row, canonical: str):
         header = mapping.get(canonical)
@@ -235,17 +249,33 @@ def import_dataset(session: Session, content: bytes, filename: str) -> ImportSum
             eid_column=_clean(col(row, "scopus_eid")),
         )
 
+        abstract = _clean(col(row, "abstract"))
+        trusted_abstract = (
+            abstract if abstract and len(abstract) >= MIN_TRUSTED_ABSTRACT_CHARS else None
+        )
+
         norm_title = normalize_title(title)
-        if (
+        existing_id = (
+            dois_to_id.get(ids.doi)
+            or eids_to_id.get(ids.scopus_eid)
+            or (titles_to_id.get(norm_title) if not ids.has_any else None)
+        )
+        is_duplicate = (
             (ids.doi and ids.doi in seen_dois)
             or (ids.scopus_eid and ids.scopus_eid in seen_eids)
             or (not ids.has_any and norm_title in seen_titles)
-        ):
-            summary.skipped_duplicates += 1
+        )
+        if is_duplicate:
+            if trusted_abstract and existing_id is not None and existing_id not in has_abstract:
+                existing_ref = session.get(ReferencePaper, existing_id)
+                existing_ref.abstract = trusted_abstract
+                existing_ref.enrichment_status = EnrichmentStatus.ENRICHED
+                existing_ref.enrichment_provider = EnrichmentProvider.DATASET
+                has_abstract.add(existing_id)
+                summary.backfilled_abstracts += 1
+            else:
+                summary.skipped_duplicates += 1
             continue
-
-        abstract = _clean(col(row, "abstract"))
-        trusted_abstract = abstract if abstract and len(abstract) >= MIN_TRUSTED_ABSTRACT_CHARS else None
 
         reference = ReferencePaper(
             original_row_number=_to_int(col(row, "original_row_number")) or position,
