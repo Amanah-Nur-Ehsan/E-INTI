@@ -25,6 +25,22 @@ class ReferenceSummary(BaseModel):
     abstract: str | None
 
 
+class ReferenceDetail(ReferenceSummary):
+    """The fuller "view details of the chosen paper" picture -- everything
+    ReferenceSummary has, plus the fields only worth showing once a paper
+    has actually been singled out as the one to cite.
+    """
+
+    source_link: str | None
+    citation_count: int | None
+    document_type: str | None
+    field_of_study: str | None
+    author_keywords: list[str] | None
+    index_keywords: list[str] | None
+    subject_areas: list[str] | None
+    publisher_url: str | None
+
+
 class RecommendationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -43,6 +59,31 @@ class RecommendationRead(BaseModel):
     user_note: str | None
     score_breakdown: ScoreBreakdownOut
     reference: ReferenceSummary
+
+
+class BestReferenceClaim(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    section_title: str | None
+    sentence_text: str
+    local_context: str
+
+
+class BestReferenceRead(BaseModel):
+    """The single reference this paper should cite -- one pick across the
+    whole draft, not one per claim. `meets_threshold`/`is_recommended` let
+    the UI show *something* even on a weak match rather than a blank page,
+    while still being honest that it's weak.
+    """
+
+    recommendation: RecommendationRead
+    claim: BestReferenceClaim
+    reference: ReferenceDetail
+    meets_threshold: bool
+    is_recommended: bool
+    min_score_threshold: float
+    recommended_score_threshold: float
 
 
 class DecisionRequest(BaseModel):

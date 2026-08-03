@@ -64,6 +64,15 @@ class Settings(BaseSettings):
     #: Sentences per Tier-1 classification call.
     classify_batch_size: int = 10
 
+    # "Which single reference should this paper cite" thresholds. Below
+    # min_score the match is too weak to present as usable; at or above
+    # recommended_score it's shown as the preferred choice rather than
+    # merely acceptable. The closest match is still returned below
+    # min_score (flagged, never silently hidden) -- an empty result reads
+    # as "broken," not "no reference is good enough yet."
+    best_reference_min_score: float = 65.0
+    best_reference_recommended_score: float = 75.0
+
     # Misc
     upload_dir: Path = Path("./uploads")
     celery_task_always_eager: bool = False

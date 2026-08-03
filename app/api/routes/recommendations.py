@@ -6,11 +6,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DraftDep, SessionDep
+from app.core.config import get_settings
 from app.db.models import AcceptedCitation, CitationRecommendation, Claim, ReferencePaper
 from app.db.models.enums import UserDecision
 from app.schemas.recommendation import (
+    BestReferenceClaim,
+    BestReferenceRead,
     DecisionRequest,
     RecommendationRead,
+    ReferenceDetail,
     ReferenceSummary,
     ScoreBreakdownOut,
     SetDecisionRequest,
@@ -120,6 +124,44 @@ async def list_recommendations_for_draft(
         if len(by_claim[rec.claim_id]) < limit_per_claim:
             by_claim[rec.claim_id].append(_serialize(rec, ref))
     return dict(by_claim)
+
+
+@router.get("/drafts/{draft_id}/best-reference", response_model=BestReferenceRead)
+async def best_reference_for_draft(draft: DraftDep, session: SessionDep) -> BestReferenceRead:
+    """The single reference this paper should cite: the highest-scoring
+    top-ranked recommendation across every claim in the draft. Always
+    returns the closest match even if it falls below the usable
+    threshold -- an empty response reads as "broken," not "no reference
+    is good enough yet," so the caller gets the number and decides.
+    """
+    row = (
+        await session.execute(
+            select(CitationRecommendation, ReferencePaper, Claim)
+            .join(ReferencePaper, ReferencePaper.id == CitationRecommendation.reference_id)
+            .join(Claim, Claim.id == CitationRecommendation.claim_id)
+            .where(Claim.draft_id == draft.id, CitationRecommendation.rank == 1)
+            .order_by(CitationRecommendation.score_percentage.desc())
+            .limit(1)
+        )
+    ).first()
+    if row is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "No recommendations yet for this draft"
+        )
+
+    recommendation, reference, claim = row
+    settings = get_settings()
+    score = recommendation.score_percentage
+
+    return BestReferenceRead(
+        recommendation=_serialize(recommendation, reference),
+        claim=BestReferenceClaim.model_validate(claim),
+        reference=ReferenceDetail.model_validate(reference),
+        meets_threshold=score >= settings.best_reference_min_score,
+        is_recommended=score >= settings.best_reference_recommended_score,
+        min_score_threshold=settings.best_reference_min_score,
+        recommended_score_threshold=settings.best_reference_recommended_score,
+    )
 
 
 @router.get("/drafts/{draft_id}/accepted-citations", response_model=dict[uuid.UUID, str])
