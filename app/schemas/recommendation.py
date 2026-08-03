@@ -86,6 +86,18 @@ class BestReferenceRead(BaseModel):
     recommended_score_threshold: float
 
 
+class ParagraphRewriteRequest(BaseModel):
+    #: One of citation_formatting_service.SUPPORTED_STYLES.
+    style: str = "APA"
+
+
+class ParagraphRewriteRead(BaseModel):
+    paragraph: str
+    in_text_citation: str
+    bibliography_entry: str
+    style: str
+
+
 class DecisionRequest(BaseModel):
     note: str | None = None
 

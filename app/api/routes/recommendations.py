@@ -13,13 +13,19 @@ from app.schemas.recommendation import (
     BestReferenceClaim,
     BestReferenceRead,
     DecisionRequest,
+    ParagraphRewriteRead,
+    ParagraphRewriteRequest,
     RecommendationRead,
     ReferenceDetail,
     ReferenceSummary,
     ScoreBreakdownOut,
     SetDecisionRequest,
 )
-from app.services.citation_formatting_service import build_citation_context, join_in_text
+from app.services.citation_formatting_service import (
+    SUPPORTED_STYLES,
+    build_citation_context,
+    join_in_text,
+)
 
 router = APIRouter(tags=["recommendations"])
 
@@ -200,6 +206,59 @@ async def _get_recommendation(session, recommendation_id: uuid.UUID) -> Citation
             status.HTTP_404_NOT_FOUND, f"Recommendation {recommendation_id} not found"
         )
     return recommendation
+
+
+@router.post(
+    "/recommendations/{recommendation_id}/rewrite-paragraph", response_model=ParagraphRewriteRead
+)
+async def rewrite_paragraph_for_recommendation(
+    recommendation_id: uuid.UUID, payload: ParagraphRewriteRequest, session: SessionDep
+) -> ParagraphRewriteRead:
+    """Generate a version of the claim's paragraph with this reference's
+    citation woven in, plus the bibliography entry to go with it -- for
+    the "help me actually write the cited paragraph" ask, not just "here
+    is a reference you could use."
+    """
+    style = (payload.style or "APA").strip().upper()
+    if style not in SUPPORTED_STYLES:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"style must be one of {', '.join(sorted(SUPPORTED_STYLES))} (got {payload.style!r})",
+        )
+
+    recommendation = await _get_recommendation(session, recommendation_id)
+    reference = await session.get(ReferencePaper, recommendation.reference_id)
+    if reference is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Reference no longer exists")
+    claim = recommendation.claim
+
+    context = build_citation_context([reference], style=style)
+    in_text_citation = context.in_text(reference.id)
+    bibliography_entry = "".join(seg.text for seg in context.entry(reference.id))
+
+    import anyio
+
+    from app.services.paragraph_rewrite_service import rewrite_paragraph
+
+    try:
+        paragraph = await anyio.to_thread.run_sync(
+            rewrite_paragraph, claim.local_context, claim.sentence_text, in_text_citation
+        )
+    except Exception as exc:
+        from app.services.llm_client import LLMOutputError
+
+        if isinstance(exc, LLMOutputError):
+            raise HTTPException(
+                status.HTTP_502_BAD_GATEWAY, f"Could not generate the paragraph: {exc}"
+            ) from exc
+        raise
+
+    return ParagraphRewriteRead(
+        paragraph=paragraph,
+        in_text_citation=in_text_citation,
+        bibliography_entry=bibliography_entry,
+        style=style,
+    )
 
 
 async def _apply_decision(

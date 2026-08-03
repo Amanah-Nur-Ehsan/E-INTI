@@ -54,13 +54,17 @@ class MockLLMClient:
 
     def complete_structured(self, *, tier: Tier, system: str, user: str, schema: type[BaseModel]):
         self.calls[tier] = self.calls.get(tier, 0) + 1
+        from app.services.paragraph_rewrite_service import ParagraphRewrite
         from app.services.sdg_classification_service import SDGPick
 
-        # SDG classification also runs at Tier.CLASSIFY (same cheap model
-        # tier as claim classification) but with a distinct schema, so
-        # dispatch on schema identity rather than tier alone.
+        # SDG classification and paragraph rewriting also run at
+        # Tier.CLASSIFY (same cheap model tier as claim classification) but
+        # with distinct schemas, so dispatch on schema identity rather than
+        # tier alone.
         if schema is SDGPick:
             return self._classify_sdg(user, schema)
+        if schema is ParagraphRewrite:
+            return self._rewrite_paragraph(user, schema)
         if tier is Tier.CLASSIFY:
             return self._classify(user, schema)
         return self._verify(user, schema)
@@ -116,6 +120,21 @@ class MockLLMClient:
         return schema.model_validate(
             {"goal_number": goal_number, "keyword": keyword, "reason": reason}
         )
+
+    def _rewrite_paragraph(self, user: str, schema: type[BaseModel]):
+        """Deterministic stand-in: append the citation right after the
+        claim sentence, or after the whole paragraph if the sentence
+        isn't found verbatim (mirrors splitAroundSentence's fallback).
+        """
+        paragraph = self._field(user, "PARAGRAPH")
+        sentence = self._field(user, "SENTENCE")
+        citation = self._field(user, "CITATION")
+
+        if sentence and sentence in paragraph:
+            rewritten = paragraph.replace(sentence, f"{sentence} {citation}", 1)
+        else:
+            rewritten = f"{paragraph} {citation}".strip()
+        return schema.model_validate({"paragraph": rewritten})
 
     @staticmethod
     def _claim_type(signals: list[str], needs: bool) -> str:
