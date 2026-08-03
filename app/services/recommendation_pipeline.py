@@ -1,6 +1,14 @@
-"""Recommendation pipeline: stages 1-5 per claim, top-5 persisted."""
+"""Recommendation pipeline: stages 1-5, top-3 verified rows persisted per claim.
+
+Stages 1-3 are batched *across* claims rather than run per claim: one
+`encode` call for every claim's query vector, one `score` call for every
+rerank pair. The models are the same and the results are identical -- it
+is purely a matter of giving the GPU one large batch instead of N tiny
+dispatches, which is where most of the local-model time was going.
+"""
 
 import uuid
+from dataclasses import dataclass
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -23,37 +31,82 @@ from app.services.verification_service import verify_candidates
 
 log = get_logger(__name__)
 
+#: Rerank pairs per cross-encoder forward pass. Large enough that a
+#: multi-claim draft is a handful of batches rather than one per claim,
+#: small enough to bound peak memory on CPU-only deployments.
+RERANK_BATCH_SIZE = 128
 
-def recommend_for_claim(
-    session: Session,
-    claim: Claim,
-    corpus: LibraryCorpus,
-) -> int:
-    """Run stages 1-5 for one claim and persist its top-3. Returns the count."""
+
+@dataclass
+class _ClaimCandidates:
+    """One claim's preranked candidates, awaiting reranker scores."""
+
+    claim: Claim
+    candidates: list
+
+
+def _retrieve_and_prerank(
+    session: Session, claims: list[Claim], corpus: LibraryCorpus
+) -> list[_ClaimCandidates]:
+    """Stages 1-2 for every claim, with all query vectors encoded at once."""
     embedder = get_embedding_service()
+    query_texts = [
+        claim_embedding_text(claim.claim_text or claim.sentence_text, claim.local_context)
+        for claim in claims
+    ]
+    query_vectors = embedder.encode(query_texts)
+
+    prepared: list[_ClaimCandidates] = []
+    for claim, query_text, query_vector in zip(claims, query_texts, query_vectors, strict=True):
+        candidates = vector_search(session, query_vector, limit=RETRIEVAL_LIMIT)
+        if not candidates:
+            continue
+        prepared.append(
+            _ClaimCandidates(
+                claim=claim,
+                candidates=prerank(
+                    candidates,
+                    corpus,
+                    query=query_text,
+                    claim_keywords=list(claim.keywords or []),
+                    limit=RERANK_LIMIT,
+                ),
+            )
+        )
+    return prepared
+
+
+def _rerank_all(prepared: list[_ClaimCandidates]) -> list[list[float]]:
+    """Stage 3 for every claim in as few cross-encoder passes as possible.
+
+    Pairs from all claims are concatenated, scored, then sliced back apart
+    in the same order -- so each claim gets exactly the scores it would
+    have got on its own.
+    """
     reranker = get_reranking_service()
+    pairs: list[tuple[str, str]] = []
+    for item in prepared:
+        pairs.extend(
+            build_pair(item.claim.local_context, c.title, c.abstract) for c in item.candidates
+        )
 
-    query_text = claim_embedding_text(claim.claim_text or claim.sentence_text, claim.local_context)
-    query_vector = embedder.encode_one(query_text)
+    scores: list[float] = []
+    for start in range(0, len(pairs), RERANK_BATCH_SIZE):
+        scores.extend(reranker.score(pairs[start : start + RERANK_BATCH_SIZE]))
 
-    # Stage 1: vector retrieval.
-    candidates = vector_search(session, query_vector, limit=RETRIEVAL_LIMIT)
-    if not candidates:
-        return 0
+    sliced: list[list[float]] = []
+    offset = 0
+    for item in prepared:
+        count = len(item.candidates)
+        sliced.append(scores[offset : offset + count])
+        offset += count
+    return sliced
 
-    # Stage 2: hybrid pre-ranking down to the rerank set.
-    candidates = prerank(
-        candidates,
-        corpus,
-        query=query_text,
-        claim_keywords=list(claim.keywords or []),
-        limit=RERANK_LIMIT,
-    )
 
-    # Stage 3: cross-encoder reranking.
-    pairs = [build_pair(claim.local_context, c.title, c.abstract) for c in candidates]
-    reranker_scores = reranker.score(pairs)
-
+def _verify_and_persist(
+    session: Session, claim: Claim, candidates: list, reranker_scores: list[float]
+) -> int:
+    """Stages 4-5 for one claim: verify, score, replace its rows."""
     # Sort by reranker score before slicing -- candidates/reranker_scores are
     # zipped in *prerank* order, so slicing candidates[:n] directly would
     # verify the wrong subset (the top-n by prerank, not by reranker).
@@ -126,6 +179,23 @@ def recommend_for_claim(
     return len(scored)
 
 
+def recommend_for_claim(
+    session: Session,
+    claim: Claim,
+    corpus: LibraryCorpus,
+) -> int:
+    """Run stages 1-5 for one claim and persist its top-3. Returns the count.
+
+    A single-claim wrapper over the same passes `recommend_for_draft` uses,
+    kept so callers and tests that work one claim at a time still can.
+    """
+    prepared = _retrieve_and_prerank(session, [claim], corpus)
+    if not prepared:
+        return 0
+    scores = _rerank_all(prepared)
+    return _verify_and_persist(session, claim, prepared[0].candidates, scores[0])
+
+
 def recommend_for_draft(session: Session, draft_id: uuid.UUID) -> dict:
     """Stage body: recommend references for every citation-worthy claim."""
     claims = list(
@@ -139,9 +209,16 @@ def recommend_for_draft(session: Session, draft_id: uuid.UUID) -> dict:
         return {"claims_processed": 0, "recommendations": 0}
 
     corpus = LibraryCorpus(session)
+
+    # Stages 1-3 batched across every claim, then stages 4-5 per claim --
+    # the LLM calls in stage 4 stay serial because they are what the rate
+    # limiter paces.
+    prepared = _retrieve_and_prerank(session, claims, corpus)
+    all_scores = _rerank_all(prepared)
+
     total = 0
-    for claim in claims:
-        total += recommend_for_claim(session, claim, corpus)
+    for item, reranker_scores in zip(prepared, all_scores, strict=True):
+        total += _verify_and_persist(session, item.claim, item.candidates, reranker_scores)
 
     return {"claims_processed": len(claims), "recommendations": total}
 
