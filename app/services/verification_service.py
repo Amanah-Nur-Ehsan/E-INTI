@@ -49,14 +49,21 @@ Return JSON only."""
 
 VERIFY_USER_TEMPLATE = """CLAIM: {claim}
 CONTEXT: {context}
+
+Judge every candidate below independently against that one claim.
+
+{candidates}
+Respond with JSON: {{"verdicts": [one entry per candidate, in any order]}}, each entry:
+{{"idx": <candidate number>,
+"verdict": "SUPPORTED|PARTIALLY_SUPPORTED|TOPICALLY_RELATED_BUT_NOT_EVIDENCE|INSUFFICIENT_EVIDENCE|CONTRADICTED",
+"support_strength": <0.0-1.0>, "supporting_evidence": "<short paraphrase>",
+"limitations": "<what is not supported>", "recommended_usage": "Direct citation|Background citation|Do not cite"}}"""
+
+VERIFY_CANDIDATE_TEMPLATE = """CANDIDATE {idx}
 TITLE: {title}
 ABSTRACT: {abstract}
 KEYWORDS: {keywords}
-
-Respond with:
-{{"verdict": "SUPPORTED|PARTIALLY_SUPPORTED|TOPICALLY_RELATED_BUT_NOT_EVIDENCE|INSUFFICIENT_EVIDENCE|CONTRADICTED",
-"support_strength": <0.0-1.0>, "supporting_evidence": "<short paraphrase>",
-"limitations": "<what is not supported>", "recommended_usage": "Direct citation|Background citation|Do not cite"}}"""
+"""
 
 
 class SupportVerdict(BaseModel):
@@ -65,6 +72,20 @@ class SupportVerdict(BaseModel):
     supporting_evidence: str = ""
     limitations: str = ""
     recommended_usage: str = ""
+
+
+class CandidateVerdict(SupportVerdict):
+    """A SupportVerdict tagged with which candidate it answers.
+
+    Subclasses rather than wraps so `_outcome_from_verdict` keeps working
+    unchanged on either shape.
+    """
+
+    idx: int
+
+
+class VerdictBatch(BaseModel):
+    verdicts: list[CandidateVerdict]
 
 
 @dataclass
@@ -154,6 +175,16 @@ def _store_cache(
     )
 
 
+def _skipped_outcome() -> VerificationOutcome:
+    return VerificationOutcome(
+        verdict=Verdict.SKIPPED,
+        support_score=0.0,
+        evidence="",
+        limitations="Automatic verification was unavailable for this candidate.",
+        recommended_usage="Review manually",
+    )
+
+
 def verify_candidates(
     session: Session,
     claim_text: str,
@@ -161,49 +192,79 @@ def verify_candidates(
     claim_hash: str,
     candidates: list[Candidate],
 ) -> dict[uuid.UUID, VerificationOutcome]:
-    """Verify each candidate, consulting and populating the cache."""
+    """Verify each candidate, consulting and populating the cache.
+
+    Every candidate needing the model goes in a *single* Tier-2 call
+    rather than one call each: at verify_limit=3 that is 3x fewer
+    requests against the rate limit, and fewer tokens too, since the
+    system prompt and the claim are sent once instead of per candidate.
+    """
     settings = get_settings()
     model_name = "mock" if settings.llm_mocked else settings.tier2_model
 
     outcomes = _load_cache(session, claim_hash, [c.reference_id for c in candidates])
-    client = get_llm_client()
 
+    pending: list[Candidate] = []
     for candidate in candidates:
         if candidate.reference_id in outcomes:
             continue
-
         if not candidate.has_abstract:
             # Nothing to read: don't spend a call, and never guess support.
             outcomes[candidate.reference_id] = _missing_abstract_outcome()
             continue
+        pending.append(candidate)
 
-        user = VERIFY_USER_TEMPLATE.format(
-            claim=claim_text,
-            context=claim_context,
+    if not pending:
+        session.commit()
+        return outcomes
+
+    # Batch-local numbering 0..n-1, mapped back via `pending[idx]` -- models
+    # renumber sequentially regardless of what they are given, so this is
+    # the only mapping that survives (same discipline as classify_batch).
+    blocks = "\n".join(
+        VERIFY_CANDIDATE_TEMPLATE.format(
+            idx=idx,
             title=candidate.title,
             abstract=candidate.abstract,
-            keywords="; ".join((candidate.author_keywords or []) + (candidate.index_keywords or [])),
+            keywords="; ".join(
+                (candidate.author_keywords or []) + (candidate.index_keywords or [])
+            ),
         )
-        try:
-            result = client.complete_structured(
-                tier=Tier.VERIFY, system=VERIFY_SYSTEM, user=user, schema=SupportVerdict
-            )
-            outcome = _outcome_from_verdict(result)
-        except LLMOutputError as exc:
-            log.warning(
-                "verification_unavailable",
-                reference_id=str(candidate.reference_id),
-                error=str(exc),
-            )
-            outcomes[candidate.reference_id] = VerificationOutcome(
-                verdict=Verdict.SKIPPED,
-                support_score=0.0,
-                evidence="",
-                limitations="Automatic verification was unavailable for this candidate.",
-                recommended_usage="Review manually",
-            )
-            continue
+        for idx, candidate in enumerate(pending)
+    )
+    user = VERIFY_USER_TEMPLATE.format(
+        claim=claim_text, context=claim_context, candidates=blocks
+    )
 
+    try:
+        batch = get_llm_client().complete_structured(
+            tier=Tier.VERIFY, system=VERIFY_SYSTEM, user=user, schema=VerdictBatch
+        )
+    except LLMOutputError as exc:
+        # The whole batch is unusable. Degrade every candidate in it to
+        # SKIPPED -- visible, and never cached, so a retry re-verifies.
+        log.warning("verification_unavailable", candidates=len(pending), error=str(exc))
+        for candidate in pending:
+            outcomes[candidate.reference_id] = _skipped_outcome()
+        session.commit()
+        return outcomes
+
+    by_idx: dict[int, CandidateVerdict] = {}
+    for verdict in batch.verdicts:
+        if 0 <= verdict.idx < len(pending):
+            by_idx[verdict.idx] = verdict
+        else:
+            log.warning("verdict_index_out_of_range", idx=verdict.idx, batch=len(pending))
+
+    for idx, candidate in enumerate(pending):
+        verdict = by_idx.get(idx)
+        if verdict is None:
+            # The model answered the batch but skipped this one; treat it
+            # exactly like a failed call rather than inventing a verdict.
+            log.warning("verdict_missing", reference_id=str(candidate.reference_id))
+            outcomes[candidate.reference_id] = _skipped_outcome()
+            continue
+        outcome = _outcome_from_verdict(verdict)
         outcomes[candidate.reference_id] = outcome
         _store_cache(session, claim_hash, candidate.reference_id, outcome, model_name)
 

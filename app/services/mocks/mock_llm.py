@@ -125,11 +125,25 @@ class MockLLMClient:
 
     # -- Tier 2 -----------------------------------------------------------
     def _verify(self, user: str, schema: type[BaseModel]):
-        from app.db.models.enums import Verdict
-
+        """One claim vs. N numbered candidates, answered in a single call."""
         claim = self._field(user, "CLAIM")
-        abstract = self._field(user, "ABSTRACT")
-        title = self._field(user, "TITLE")
+
+        # Split on the CANDIDATE <n> headers the batch template emits. The
+        # first chunk is the claim/context preamble, so it is dropped.
+        chunks = re.split(r"^CANDIDATE (\d+)$", user, flags=re.MULTILINE)[1:]
+        verdicts = []
+        for raw_idx, block in zip(chunks[::2], chunks[1::2], strict=True):
+            payload = self._verdict_payload(
+                claim=claim,
+                title=self._field(block, "TITLE"),
+                abstract=self._field(block, "ABSTRACT"),
+            )
+            verdicts.append({"idx": int(raw_idx), **payload})
+
+        return schema.model_validate({"verdicts": verdicts})
+
+    def _verdict_payload(self, claim: str, title: str, abstract: str) -> dict:
+        from app.db.models.enums import Verdict
 
         if not abstract:
             verdict = Verdict.INSUFFICIENT_EVIDENCE
@@ -168,21 +182,19 @@ class MockLLMClient:
             Verdict.CONTRADICTED: "Do not cite",
         }[verdict]
 
-        return schema.model_validate(
-            {
-                "verdict": verdict.value,
-                "support_strength": {
-                    Verdict.SUPPORTED: 0.9,
-                    Verdict.PARTIALLY_SUPPORTED: 0.6,
-                    Verdict.TOPICALLY_RELATED_BUT_NOT_EVIDENCE: 0.3,
-                    Verdict.INSUFFICIENT_EVIDENCE: 0.1,
-                    Verdict.CONTRADICTED: 0.0,
-                }[verdict],
-                "supporting_evidence": evidence,
-                "limitations": limitations,
-                "recommended_usage": usage,
-            }
-        )
+        return {
+            "verdict": verdict.value,
+            "support_strength": {
+                Verdict.SUPPORTED: 0.9,
+                Verdict.PARTIALLY_SUPPORTED: 0.6,
+                Verdict.TOPICALLY_RELATED_BUT_NOT_EVIDENCE: 0.3,
+                Verdict.INSUFFICIENT_EVIDENCE: 0.1,
+                Verdict.CONTRADICTED: 0.0,
+            }[verdict],
+            "supporting_evidence": evidence,
+            "limitations": limitations,
+            "recommended_usage": usage,
+        }
 
     @staticmethod
     def _field(user: str, label: str) -> str:
