@@ -34,6 +34,9 @@ class Draft(UUIDPrimaryKey, TimestampMixin, Base):
     sdg_number: Mapped[int | None] = mapped_column(Integer)
     sdg_name: Mapped[str | None] = mapped_column(Text)
     sdg_keyword: Mapped[str | None] = mapped_column(Text)
+    #: One sentence on why this goal was picked -- the keyword alone doesn't
+    #: explain the match, and a bare "SDG 3" invites doubt the user can't check.
+    sdg_rationale: Mapped[str | None] = mapped_column(Text)
 
     claims: Mapped[list["Claim"]] = relationship(  # noqa: F821
         back_populates="draft", cascade="all, delete-orphan"

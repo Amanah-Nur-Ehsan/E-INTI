@@ -30,7 +30,8 @@ SDG_SYSTEM = (
     "that were found in the paper's text. Pick the single goal the paper "
     "is most centrally about, and the one keyword from that goal's list "
     "that best represents the match. Only use a goal number and keyword "
-    "from the shortlist below -- never invent one. Return JSON only."
+    "from the shortlist below -- never invent one. Also give a one-sentence "
+    "reason naming what in the paper connects it to that goal. Return JSON only."
 )
 
 SDG_USER_TEMPLATE = """Paper text (excerpt):
@@ -39,13 +40,15 @@ SDG_USER_TEMPLATE = """Paper text (excerpt):
 Candidate SDGs (goal_number: name -- matched keywords):
 {candidates}
 
-Pick exactly one goal_number from the list above, and one keyword from
-that goal's matched keywords."""
+Pick exactly one goal_number from the list above, one keyword from that
+goal's matched keywords, and a one-sentence `reason` explaining what in
+the paper ties it to that goal."""
 
 
 class SDGPick(BaseModel):
     goal_number: int
     keyword: str | None = None
+    reason: str = ""
 
 
 def _format_candidates(candidates: list[GoalMatch]) -> str:
@@ -102,6 +105,7 @@ def classify_draft(session: Session, draft: Draft) -> dict:
     draft.sdg_number = match.number
     draft.sdg_name = match.name
     draft.sdg_keyword = keyword
+    draft.sdg_rationale = (pick.reason or "").strip() or None
     session.commit()
 
     log.info(
@@ -116,4 +120,5 @@ def classify_draft(session: Session, draft: Draft) -> dict:
         "sdg_number": match.number,
         "sdg_name": match.name,
         "sdg_keyword": keyword,
+        "sdg_rationale": draft.sdg_rationale,
     }

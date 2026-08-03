@@ -37,11 +37,15 @@ def test_classifies_a_health_paper_as_sdg_3(db_session):
     assert result["sdg_number"] == 3
     assert result["sdg_name"] == "Good health and well-being"
     assert result["sdg_keyword"] is not None
+    # A bare "SDG 3" the user can't interrogate is the thing the rationale
+    # exists to prevent, so it must actually be persisted, not just returned.
+    assert result["sdg_rationale"]
 
     db_session.refresh(draft)
     assert draft.sdg_number == 3
     assert draft.sdg_name == "Good health and well-being"
     assert draft.sdg_keyword == result["sdg_keyword"]
+    assert draft.sdg_rationale == result["sdg_rationale"]
 
 
 def test_empty_draft_text_is_not_classified(db_session):

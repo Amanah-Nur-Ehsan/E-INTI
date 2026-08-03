@@ -33,6 +33,7 @@ class AnalysisRunStatus(BaseModel):
     sdg_number: int | None = None
     sdg_name: str | None = None
     sdg_keyword: str | None = None
+    sdg_rationale: str | None = None
 
 
 class AnalysisRunAccepted(BaseModel):

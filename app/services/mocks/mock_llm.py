@@ -98,14 +98,24 @@ class MockLLMClient:
         """
         match = re.search(r"^(\d+): (.+?) -- (.*)$", user, re.MULTILINE)
         if not match:
-            return schema.model_validate({"goal_number": 1, "keyword": None})
+            return schema.model_validate(
+                {"goal_number": 1, "keyword": None, "reason": "Mock fallback: no candidates parsed."}
+            )
 
         goal_number = int(match.group(1))
+        goal_name = match.group(2).strip()
         keywords_part = match.group(3).strip()
         keyword = None
         if not keywords_part.startswith("(no keyword match"):
             keyword = keywords_part.split(",")[0].strip()
-        return schema.model_validate({"goal_number": goal_number, "keyword": keyword})
+        reason = (
+            f"Mock: '{keyword}' was the strongest keyword match for {goal_name}."
+            if keyword
+            else f"Mock: {goal_name} ranked highest with no keyword match."
+        )
+        return schema.model_validate(
+            {"goal_number": goal_number, "keyword": keyword, "reason": reason}
+        )
 
     @staticmethod
     def _claim_type(signals: list[str], needs: bool) -> str:
