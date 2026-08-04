@@ -39,6 +39,20 @@ dev = [
     "faker>=28.0",
 ]
 
+# On Linux (the Docker/server platform), torch resolves to PyTorch's
+# CPU-only wheel index instead of the CUDA-bundled default -- these
+# containers never have a GPU, and the CUDA build's nvidia-cu12 runtime
+# packages are most of why the api/worker image was ~7GB. macOS is
+# untouched by this: PyPI's default torch wheels there already exclude
+# CUDA and are what MPS support needs, so `make dev` sees no change.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

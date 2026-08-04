@@ -169,14 +169,14 @@ docker compose --profile full ps                       # health status
 docker compose --profile full down                     # stop (data persists in named volumes)
 ```
 
-**Known inefficiency, not yet fixed:** `pyproject.toml` declares plain
-`torch>=2.4` with no CPU-only index pin, so `uv sync` resolves the
-CUDA-enabled wheel on Linux (pulling in the `nvidia-cu12` runtime packages)
-even though this image never uses a GPU -- harmless functionally, but it's
-most of why the built image is ~7GB. Pinning `[tool.uv.sources]` to
-`https://download.pytorch.org/whl/cpu` for the Linux platform marker would
-shrink this substantially; not done here to avoid re-resolving and
-re-verifying the whole lockfile in the same pass as getting this working.
+`pyproject.toml`'s `[tool.uv.sources]` pins `torch` to PyTorch's CPU-only
+wheel index on Linux only (`sys_platform == 'linux'` marker) -- this image
+never has a GPU, and the default CUDA-enabled wheel was pulling in the
+entire `nvidia-cu12` runtime for nothing. Verified with `torch.__version__`
+inside the built container (`2.x+cpu`, not the CUDA build) and a real
+SPECTER2 embedding call on CPU. Took the api/worker image from ~7GB to
+~2.9GB. macOS is untouched by the marker -- `make dev`'s MPS support relies
+on the platform's default (non-CUDA) wheel, which this doesn't touch.
 
 ## Working without API keys
 
