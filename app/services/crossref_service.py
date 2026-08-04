@@ -8,6 +8,7 @@ Crossref stays INCOMPLETE, per the spec's no-hallucinated-support rule.
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.db.models.enums import EnrichmentProvider
 from app.services.enrichment_types import EnrichmentResult, RefIdentity
@@ -23,7 +24,8 @@ class CrossrefService:
     #: consults it for references still missing basic bibliographic metadata.
     supplies_abstracts = False
 
-    def __init__(self, client: httpx.Client | None = None, mailto: str = "citationinti@example.org"):
+    def __init__(self, client: httpx.Client | None = None, mailto: str | None = None):
+        mailto = mailto or get_settings().enrichment_contact_email
         self._client = client or httpx.Client(
             base_url=BASE_URL,
             timeout=30.0,

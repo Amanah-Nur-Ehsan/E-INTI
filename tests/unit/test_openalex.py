@@ -95,3 +95,32 @@ def test_prefetch_caches_a_miss_as_none_so_fetch_does_not_refetch():
 
     service.prefetch([RefIdentity(title="x", doi="10.1016/unresolvable")])
     assert service.fetch(RefIdentity(title="x", doi="10.1016/unresolvable")) is None
+
+
+def test_prefetch_aborts_remaining_chunks_on_an_extended_rate_limit(monkeypatch):
+    """Seen live: a large burst put OpenAlex into an ~11.5 hour hard block
+    (Retry-After: 41577). Hammering every remaining chunk under that block
+    just repeats the same 429 for hours -- prefetch must abort the whole
+    run on the first extended block instead, not chunk-by-chunk retry.
+    """
+    import time as time_module
+
+    monkeypatch.setattr(time_module, "sleep", lambda _: None)
+
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        return httpx.Response(429, headers={"Retry-After": "41577"})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), base_url="https://api.openalex.org")
+    service = OpenAlexService(client=client)
+
+    dois = [f"10.1000/{i}" for i in range(120)]  # 3 chunks of 50/50/20
+    sorted_dois = sorted(dois)
+    service.prefetch([RefIdentity(title="x", doi=d) for d in dois])
+
+    # The circuit breaker must trip before a second chunk is ever attempted.
+    second_chunk_first_doi = sorted_dois[50]
+    assert not any(second_chunk_first_doi in c for c in calls)
+    assert service._prefetched == {}

@@ -18,6 +18,7 @@ import time
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.db.models.enums import EnrichmentProvider
 from app.services.enrichment_types import EnrichmentResult, RateLimited, RefIdentity
@@ -29,14 +30,20 @@ SELECT_FIELDS = (
     "doi,title,abstract_inverted_index,publication_year,authorships,"
     "primary_location,cited_by_count,type"
 )
-#: The polite pool (a mailto param) gets a much higher rate limit than
-#: anonymous requests; this is not a credential, just good-citizen contact info.
-CONTACT_EMAIL = "citationinti@example.org"
 
 #: filter=doi:a|b|c accepts many values per request -- batching turns a
 #: multi-thousand-row backlog into a handful of requests instead of one per row.
 BATCH_SIZE = 50
 BATCH_PAUSE_SECONDS = 0.15
+
+#: A Retry-After beyond this means OpenAlex has moved past normal per-request
+#: throttling into an extended block -- seen live as ~41,500s (~11.5 hours)
+#: after a large burst of batch requests. Retrying the *next* chunk under an
+#: hours-long block just repeats the same 429 for every remaining chunk, so
+#: prefetch() aborts the whole run instead: whatever resolved before the
+#: block stays cached and usable, the rest fall through to Crossref/nothing
+#: this run rather than burning the worker for hours doing nothing.
+EXTENDED_BLOCK_RETRY_AFTER_SECONDS = 120.0
 
 
 def _invert_abstract(index: dict[str, list[int]] | None) -> str | None:
@@ -54,9 +61,9 @@ def _invert_abstract(index: dict[str, list[int]] | None) -> str | None:
 class OpenAlexService:
     name = "openalex"
 
-    def __init__(self, client: httpx.Client | None = None, mailto: str = CONTACT_EMAIL):
+    def __init__(self, client: httpx.Client | None = None, mailto: str | None = None):
         self._client = client or httpx.Client(base_url=BASE_URL, timeout=60.0)
-        self._mailto = mailto
+        self._mailto = mailto or get_settings().enrichment_contact_email
         self._prefetched: dict[str, EnrichmentResult | None] = {}
 
     def close(self) -> None:
@@ -74,7 +81,23 @@ class OpenAlexService:
 
         for start in range(0, len(dois), BATCH_SIZE):
             chunk = dois[start : start + BATCH_SIZE]
-            works = self._get_batch(chunk)
+            try:
+                works = self._get_batch(chunk)
+            except RateLimited as exc:
+                if exc.retry_after and exc.retry_after > EXTENDED_BLOCK_RETRY_AFTER_SECONDS:
+                    log.warning(
+                        "openalex_prefetch_aborted_extended_block",
+                        retry_after=exc.retry_after,
+                        resolved_before_abort=len(self._prefetched),
+                        dois_remaining=len(dois) - start,
+                    )
+                    return
+                log.warning("openalex_batch_error", error=str(exc), chunk=len(chunk))
+                works = None
+            except Exception as exc:
+                log.warning("openalex_batch_error", error=str(exc), chunk=len(chunk))
+                works = None
+
             if works is None:
                 continue
 
@@ -98,13 +121,9 @@ class OpenAlexService:
 
     def _get_batch(self, chunk: list[str]) -> list[dict] | None:
         filt = "doi:" + "|".join(chunk)
-        try:
-            response = self._request(
-                "/works", params={"filter": filt, "per-page": len(chunk), "select": SELECT_FIELDS}
-            )
-        except Exception as exc:
-            log.warning("openalex_batch_error", error=str(exc), chunk=len(chunk))
-            return None
+        response = self._request(
+            "/works", params={"filter": filt, "per-page": len(chunk), "select": SELECT_FIELDS}
+        )
         return response.get("results") if response else None
 
     @retry(

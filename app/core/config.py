@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     gemini_api_key: str = ""
 
+    # OpenAlex/Crossref "polite pool" contact email -- a real, monitored
+    # address gets a meaningfully higher rate limit than an anonymous or
+    # obviously-placeholder one (the shipped default uses the IANA-reserved
+    # example.org domain specifically so it's never mistaken for a real
+    # inbox, but that's also indistinguishable from spam/placeholder traffic
+    # to OpenAlex's abuse detection -- a real deploy should override this).
+    enrichment_contact_email: str = "citationinti@example.org"
+
     # Provider mocking
     use_mock_providers: bool = True
     mock_llm: bool | None = None
