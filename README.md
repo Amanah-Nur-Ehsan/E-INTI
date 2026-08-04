@@ -142,12 +142,21 @@ Everything under this profile stays off `make dev`'s path entirely — a plain
 
 `postgres`/`redis`/`api`/`web` all publish to `127.0.0.1` only, matching this
 file's existing loopback-only convention — nothing here is meant to be
-reachable directly from the public internet. Point your reverse proxy's
-upstream at `http://127.0.0.1:3100` (the `web` service) if it runs on the
-same host; if your reverse proxy is itself a Docker container, join it to
-this compose project's default network and point it at `http://web:3100`
-instead, then the `127.0.0.1:3100` port publish in `docker-compose.yml` can
-be dropped.
+reachable directly from the public internet.
+
+If your reverse proxy runs directly on the host (not in Docker), point its
+upstream at `http://127.0.0.1:3100`. If it's itself a Docker container (e.g.
+Nginx Proxy Manager, its own separate Compose project), it can't reach that
+loopback-only publish at all — Docker's `127.0.0.1:host:container` binding
+only works for processes on the host itself, not for other containers, even
+on the same machine. `web` already joins an external network named by
+`NPM_NETWORK_NAME` (defaults to `nginx_proxy_manager_default`; check yours
+with `docker network ls` — Compose auto-names it `<project-dir>_default`) so
+this works automatically: point the proxy host's upstream at
+`http://web:3100`, no manual `docker network connect` needed, and it survives
+NPM's container being recreated. Override the default with
+`NPM_NETWORK_NAME=your_actual_network_name` in `.env` if your reverse proxy's
+Compose project isn't named `nginx_proxy_manager`.
 
 Two things worth doing before this is exposed to real users, neither done
 here since they're deployment-specific decisions, not defaults:

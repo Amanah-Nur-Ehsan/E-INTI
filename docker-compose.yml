@@ -94,18 +94,33 @@ services:
     build:
       context: ./frontend
     ports:
-      # Loopback only, matching postgres/redis below -- your reverse proxy
-      # (Nginx Proxy Manager) reaches this via the host's localhost:3100,
-      # never directly from the public internet. If NPM itself runs in
-      # Docker on this same host, join it to this compose's default
-      # network instead and point it at http://web:3100 -- then this
-      # `ports:` block can be dropped entirely.
+      # Loopback-only, matching postgres/redis above -- lets you curl/debug
+      # from the host itself, but this is not how the reverse proxy reaches
+      # it (see the `networks:` block below for that).
       - "127.0.0.1:3100:3100"
     environment:
       API_ORIGIN: http://api:8000
     depends_on:
       api:
         condition: service_healthy
+    networks:
+      - default
+      - npm_proxy
+
+networks:
+  default: {}
+  # Nginx Proxy Manager runs as its own separate Docker Compose project, so
+  # it's on its own network by default and can't reach `web`'s loopback-only
+  # port publish above -- `docker network connect`-ing it by hand works but
+  # doesn't survive NPM's container being recreated. Joining `web` to NPM's
+  # network here instead means NPM can always reach it at `http://web:3100`
+  # (the Docker-internal service name, not the container name/hash), no
+  # manual reconnect ever needed. Override NPM_NETWORK_NAME if your NPM
+  # compose project isn't named "nginx_proxy_manager" (check with
+  # `docker network ls` -- it defaults to `<project-dir>_default`).
+  npm_proxy:
+    external: true
+    name: ${NPM_NETWORK_NAME:-nginx_proxy_manager_default}
 
 volumes:
   postgres_data:
