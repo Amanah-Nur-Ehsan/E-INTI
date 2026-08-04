@@ -94,9 +94,11 @@ already holds 3000, Next.js still starts, but page HTML gets served while
 works, because React never hydrates. Port 3100 sidesteps it; override with
 `WEB_PORT=3200 make dev` if 3100 is taken too.
 
-The frontend is a separate `npm` project in `frontend/` — no Docker container for
-it, since the API and worker already run on the host for MPS and a Node container
-would just add a container-to-host networking hop for nothing. Its typed API client
+The frontend is a separate `npm` project in `frontend/` — for local dev it runs on
+the host with no Docker container, since the API and worker already run on the host
+for MPS and a Node container would just add a container-to-host networking hop for
+nothing. (A server deployment does containerize it — see "Server deployment" below;
+that constraint is Mac-specific and doesn't apply to a Linux server.) Its typed API client
 is generated from the running backend's OpenAPI schema (`lib/api/schema.d.ts`,
 checked into git) via `make gen-api`; regenerate it whenever the API shape changes.
 
@@ -107,6 +109,74 @@ document model, and the moment the user could type, every stored offset would go
 stale and silently fail export's `POSITION_MISMATCH` check. Highlights and ghost
 text are computed by two pure functions (`lib/review/segments.ts`,
 `lib/review/highlight.ts`) over plain `raw_text` and the claim list instead.
+
+## Server deployment (Docker)
+
+`make dev` (above) is for local Mac dev only — it deliberately runs the API,
+worker, and frontend on the host, not in Docker, because local models need
+Apple Silicon's MPS GPU, which Docker on macOS can't pass through. A Linux
+server has no such constraint, so a server deploy containerizes everything
+instead, behind whatever reverse proxy you use (Nginx Proxy Manager, Caddy,
+etc.) for your domain/TLS.
+
+```bash
+cp .env.example .env    # then fill in real values -- .env is gitignored,
+                         # it never travels with git and must be created
+                         # by hand on every machine that needs it
+docker compose --profile full up -d --build
+```
+
+This starts, in order: `postgres` + `redis`, a one-shot `migrate` service
+(`alembic upgrade head`, then exits), then `api`, `worker`, and `web` once
+their dependencies are healthy. `api`/`worker` share one image (`Dockerfile`
+at the repo root) that bakes spaCy + SPECTER2 + the cross-encoder in at
+*build* time via `scripts/warmup_models.py` — the containers need no network
+access for models at runtime and don't lose the cache on every restart.
+`web` is a separate multi-stage build (`frontend/Dockerfile`) that runs
+`next build` then `next start`, with `API_ORIGIN=http://api:8000` so its
+same-origin `/api/*` rewrite reaches the API over the Docker network.
+
+Everything under this profile stays off `make dev`'s path entirely — a plain
+`docker compose up -d postgres redis` (what `make dev` runs) never touches
+`migrate`/`api`/`worker`/`web`, so the two workflows can't collide.
+
+`postgres`/`redis`/`api`/`web` all publish to `127.0.0.1` only, matching this
+file's existing loopback-only convention — nothing here is meant to be
+reachable directly from the public internet. Point your reverse proxy's
+upstream at `http://127.0.0.1:3100` (the `web` service) if it runs on the
+same host; if your reverse proxy is itself a Docker container, join it to
+this compose project's default network and point it at `http://web:3100`
+instead, then the `127.0.0.1:3100` port publish in `docker-compose.yml` can
+be dropped.
+
+Two things worth doing before this is exposed to real users, neither done
+here since they're deployment-specific decisions, not defaults:
+- **Auth is not actually wired up yet.** `require_api_key` exists
+  (`app/core/security.py`) and reads `API_KEY` from `.env`, but no router
+  currently depends on it -- setting `API_KEY` alone does nothing right now.
+  Someone needs to add `dependencies=[Depends(require_api_key)]` to the
+  routers that should require it before this is safe to expose beyond a
+  reverse-proxy-level restriction (IP allowlist, HTTP basic auth in NPM, etc.).
+- **Update `CORS_ORIGINS`** in `.env` to your actual domain. The browser
+  never needs this for normal use (the frontend's `/api/*` rewrite keeps
+  requests same-origin), but it matters the moment anything calls the API
+  directly cross-origin.
+
+Useful commands once it's up:
+```bash
+docker compose --profile full logs -f api worker web   # tail all three
+docker compose --profile full ps                       # health status
+docker compose --profile full down                     # stop (data persists in named volumes)
+```
+
+**Known inefficiency, not yet fixed:** `pyproject.toml` declares plain
+`torch>=2.4` with no CPU-only index pin, so `uv sync` resolves the
+CUDA-enabled wheel on Linux (pulling in the `nvidia-cu12` runtime packages)
+even though this image never uses a GPU -- harmless functionally, but it's
+most of why the built image is ~7GB. Pinning `[tool.uv.sources]` to
+`https://download.pytorch.org/whl/cpu` for the Linux platform marker would
+shrink this substantially; not done here to avoid re-resolving and
+re-verifying the whole lockfile in the same pass as getting this working.
 
 ## Working without API keys
 

@@ -29,23 +29,84 @@ services:
       timeout: 3s
       retries: 10
 
-  # API in Docker is optional (profile "full"); local dev runs uvicorn on host.
-  # Local models (SPECTER2/reranker) must run on host for MPS — never in Docker.
+  # Everything below is profile "full": a server deploy (api + worker + web
+  # in Docker), not local Mac dev. `make dev` only ever runs
+  # `docker compose up -d postgres redis` (no profile), so it's unaffected
+  # by anything here. Local models (SPECTER2/reranker) must run on the host
+  # for MPS on a Mac -- never in Docker -- which is exactly what `make dev`
+  # already does; this profile is for a Linux server instead.
+
+  # One-shot: runs the schema up to head, then exits. api/worker wait on it
+  # completing successfully rather than each racing to migrate themselves.
+  migrate:
+    profiles: ["full"]
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://dev:dev@postgres:5432/citation_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: alembic upgrade head
+
   api:
     profiles: ["full"]
     build: .
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
+    env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://dev:dev@postgres:5432/citation_db
       REDIS_URL: redis://:${REDIS_PASSWORD:-devredispass}@redis:6379/0
-      USE_MOCK_PROVIDERS: "true"
+    volumes:
+      - uploads_data:/app/uploads
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/healthz | grep -q '\"status\":\"ok\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  worker:
+    profiles: ["full"]
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://dev:dev@postgres:5432/citation_db
+      REDIS_URL: redis://:${REDIS_PASSWORD:-devredispass}@redis:6379/0
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    command: celery -A app.workers.celery_app worker --loglevel=info --pool=solo
+
+  web:
+    profiles: ["full"]
+    build:
+      context: ./frontend
+    ports:
+      # Loopback only, matching postgres/redis below -- your reverse proxy
+      # (Nginx Proxy Manager) reaches this via the host's localhost:3100,
+      # never directly from the public internet. If NPM itself runs in
+      # Docker on this same host, join it to this compose's default
+      # network instead and point it at http://web:3100 -- then this
+      # `ports:` block can be dropped entirely.
+      - "127.0.0.1:3100:3100"
+    environment:
+      API_ORIGIN: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   postgres_data:
+  uploads_data:
