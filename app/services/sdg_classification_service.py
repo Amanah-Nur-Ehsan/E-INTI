@@ -25,24 +25,67 @@ MAX_CLASSIFY_CHARS = 4000
 
 SDG_SYSTEM = (
     "You classify an academic paper against the UN Sustainable Development "
-    "Goals (SDGs). You are given a shortlist of candidate goals, each with "
-    "keyword phrases from an established SDG keyword-search methodology "
-    "that were found in the paper's text. Pick the single goal the paper "
-    "is most centrally about, and the one keyword from that goal's list "
-    "that best represents the match. Only use a goal number and keyword "
-    "from the shortlist below -- never invent one. Also give a one-sentence "
-    "reason naming what in the paper connects it to that goal. Return JSON only."
+    "Goals (SDGs) using only the official goal names and keyword phrases "
+    "contained in the file titled 'SDG Goals Keywords as of 2026'. "
+    "You are given a shortlist of candidate goals generated from that file, "
+    "where each candidate includes only keyword phrases from its corresponding "
+    "SDG group that were matched in the paper text. "
+    "Select the single SDG that the paper is most centrally and substantively "
+    "about, then select the single matched keyword from that same SDG group "
+    "that best represents the paper's actual topic, contribution, object, or "
+    "measured outcome. "
+    "Do not select a goal merely because a generic word such as 'framework', "
+    "'model', 'system', 'innovation', 'technology', or 'management' appears in "
+    "the paper. The keyword must be interpreted within the thematic context of "
+    "its SDG group in 'SDG Goals Keywords as of 2026'. "
+    "Prioritize direct alignment with the paper's research objective, domain, "
+    "problem, evidence, and demonstrated outcome. Reject candidates supported "
+    "only by lexical similarity, speculative future applications, or indirect "
+    "associations. "
+    "Use only a goal_number, goal_name, and keyword provided in the candidate "
+    "shortlist. Never invent, rewrite, normalize, translate, singularize, "
+    "pluralize, or move a keyword between SDG groups. Preserve the keyword "
+    "exactly as supplied, including punctuation, capitalization, hyphens, and "
+    "asterisks. "
+    "Return valid JSON only, with exactly these keys: goal_number, goal_name, "
+    "keyword, reason. The reason must be one sentence identifying the specific "
+    "research objective, application, evidence, or measured outcome that "
+    "directly connects the paper to the selected SDG."
 )
 
 SDG_USER_TEMPLATE = """Paper text (excerpt):
 {text}
 
-Candidate SDGs (goal_number: name -- matched keywords):
+Candidate SDGs extracted from the file "SDG Goals Keywords as of 2026":
+
 {candidates}
 
-Pick exactly one goal_number from the list above, one keyword from that
-goal's matched keywords, and a one-sentence `reason` explaining what in
-the paper ties it to that goal."""
+Each candidate follows this structure:
+
+goal_number: SDG name
+matched_keywords:
+- exact keyword from that SDG group
+- exact keyword from that SDG group
+
+Select exactly:
+1. one goal_number from the candidate list;
+2. the corresponding goal_name exactly as supplied;
+3. one keyword from that goal's matched_keywords, reproduced exactly; and
+4. one sentence explaining the paper-level evidence for the selection.
+
+Selection rules:
+- Choose the SDG that best matches the paper's central research purpose,
+  application domain, problem, contribution, and measured outcome.
+- Treat the candidate keywords as terms sourced from "SDG Goals Keywords as
+  of 2026", not as independent generic labels.
+- Interpret every keyword within the context of its own SDG group.
+- Do not choose based only on a shared word.
+- A generic keyword such as "framework" is valid only when the proposed
+  framework directly concerns the substantive theme of that SDG.
+- Do not use possible future applications as evidence unless they are directly
+  investigated in the paper.
+- Do not invent or modify the goal number, goal name, or keyword.
+- Return JSON only."""
 
 
 class SDGPick(BaseModel):
