@@ -59,6 +59,20 @@ type ResponseBody<P extends keyof paths, M extends Method> = paths[P] extends {
       ? R
       : unknown;
 
+/** Reads an error response body exactly once, as JSON if it parses as
+ * JSON, otherwise as plain text. `response.json()` consumes the body
+ * stream even when JSON.parse throws, so falling back to `response.text()`
+ * on the same response after a failed `.json()` always throws "body
+ * stream already read" -- read once as text, then try to parse that. */
+async function readErrorBody(response: Response): Promise<unknown> {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
 /** Fills `{param}` placeholders in a path template from a plain object. */
 function interpolate(path: string, params?: Record<string, string | number>): string {
   if (!params) return path;
@@ -94,13 +108,7 @@ async function request<P extends keyof paths, M extends Method>(
   });
 
   if (!response.ok) {
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
-      body = await response.text();
-    }
-    throw new ApiError(response.status, body);
+    throw new ApiError(response.status, await readErrorBody(response));
   }
 
   if (response.status === 204) {
@@ -146,13 +154,7 @@ export async function postFormData(path: string, file: File, params?: Record<str
 
   const response = await fetch(url.toString(), { method: "POST", body: form });
   if (!response.ok) {
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
-      body = await response.text();
-    }
-    throw new ApiError(response.status, body);
+    throw new ApiError(response.status, await readErrorBody(response));
   }
   return response.json();
 }
