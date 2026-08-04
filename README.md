@@ -133,8 +133,18 @@ at the repo root) that bakes spaCy + SPECTER2 + the cross-encoder in at
 *build* time via `scripts/warmup_models.py` — the containers need no network
 access for models at runtime and don't lose the cache on every restart.
 `web` is a separate multi-stage build (`frontend/Dockerfile`) that runs
-`next build` then `next start`, with `API_ORIGIN=http://api:8000` so its
-same-origin `/api/*` rewrite reaches the API over the Docker network.
+`next build` then `next start`, with `API_ORIGIN=http://api:8000` passed
+as a Docker **build arg** (`docker-compose.yml`'s `build.args`, not
+`environment:`) so its same-origin `/api/*` rewrite reaches the API over
+the Docker network. This has to be a build arg, not a runtime env var:
+`next build` resolves `next.config.ts`'s `rewrites()` destination once and
+writes it into `.next/routes-manifest.json`, which `next start` reads
+verbatim — it does not re-invoke `rewrites()` or re-read `process.env` at
+boot, confirmed by inspecting the built manifest directly. A container that
+only had `API_ORIGIN` set at `docker run` time (correctly, verified with
+`printenv` inside the container) still proxied to the stale build-time
+default and failed with `ECONNREFUSED 127.0.0.1:8000` — this was a real
+bug shipped and caught live on an actual deploy, not a hypothetical.
 
 Everything under this profile stays off `make dev`'s path entirely — a plain
 `docker compose up -d postgres redis` (what `make dev` runs) never touches

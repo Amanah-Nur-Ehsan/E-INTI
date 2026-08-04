@@ -10,8 +10,15 @@ FROM node:22-slim AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# API_ORIGIN is read at request time by next.config.ts's rewrite (server-side,
-# inside the container), not baked in at build time -- no build ARG needed.
+# `next build` resolves next.config.ts's rewrites() destination once and
+# writes it verbatim into .next/routes-manifest.json -- `next start` reads
+# that manifest, it does NOT re-invoke rewrites() or re-read process.env at
+# boot. So API_ORIGIN must be a build ARG, not a docker-compose `environment:`
+# entry (confirmed by inspecting the built manifest: a runtime-only env var
+# here produced a container that could reach its own value via `printenv`
+# but still proxied to the stale build-time default, ECONNREFUSED).
+ARG API_ORIGIN=http://api:8000
+ENV API_ORIGIN=$API_ORIGIN
 RUN npm run build
 
 FROM node:22-slim AS runner

@@ -93,13 +93,17 @@ services:
     profiles: ["full"]
     build:
       context: ./frontend
+      # A runtime `environment:` entry for API_ORIGIN would do nothing --
+      # next build bakes the rewrite destination into
+      # .next/routes-manifest.json, which `next start` just reads. It has
+      # to be a build arg so it's present while `npm run build` runs.
+      args:
+        API_ORIGIN: http://api:8000
     ports:
       # Loopback-only, matching postgres/redis above -- lets you curl/debug
       # from the host itself, but this is not how the reverse proxy reaches
       # it (see the `networks:` block below for that).
       - "127.0.0.1:3100:3100"
-    environment:
-      API_ORIGIN: http://api:8000
     depends_on:
       api:
         condition: service_healthy
