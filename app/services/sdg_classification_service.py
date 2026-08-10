@@ -224,6 +224,19 @@ def classify_draft(session: Session, draft: Draft) -> dict:
         if pick.keyword in match.matched_keywords
         else (match.matched_keywords[0] if match.matched_keywords else None)
     )
+    if keyword and keyword.strip().lower() == match.name.strip().lower():
+        # A keyword must be a phrase *from inside* the goal's keyword list
+        # (see sdg_keyword_matcher.py / app/data/sdg_goals.json) -- the
+        # goal name itself ("Good health and well-being") is the cluster
+        # label, never a valid keyword. This should already be unreachable
+        # given the fallback above only ever draws from match.matched_keywords,
+        # which never contains the name -- but a model can echo the name
+        # into `keyword` when it has nothing real to offer (observed live:
+        # a paper with no literal keyword-list hit for its matched goal
+        # still got the goal's own name written into the Keywords line).
+        # Guard belt-and-braces at the point of use rather than trust the
+        # upstream selection alone.
+        keyword = None
 
     fits = pick.fits
     if fits and keyword and keyword.strip().lower() in _GENERIC_KEYWORDS:

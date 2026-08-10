@@ -224,3 +224,49 @@ def test_a_correct_goal_ranked_below_the_naive_top_5_still_keeps_its_keyword(db_
     assert result["sdg_number"] == 3
     assert result["sdg_name"] == "Good health and well-being"
     assert result["sdg_keyword"] == "cardiovascular disease"
+
+
+def test_keyword_never_equals_the_goal_name(db_session, monkeypatch):
+    """Observed live: the exported paper's Keywords line ended up with the
+    SDG group's own cluster name ("Good health and well-being") appended
+    as if it were a keyword, instead of a real phrase from inside that
+    group's keyword list (app/data/sdg_goals.json). A keyword must come
+    from *inside* the group, never be the group label itself -- guarded
+    explicitly at the point of use, independent of whatever upstream
+    combination of model output and candidate data produced it.
+    """
+    from app.services import sdg_classification_service as svc
+
+    draft = _make_draft(db_session, "A paper about auscultation and heart sound analysis.")
+    fake = _FakeSDGClient(
+        {
+            "fits": True,
+            "goal_number": 3,
+            "keyword": "Good health and well-being",
+            "reason": "The paper concerns health monitoring.",
+        }
+    )
+    monkeypatch.setattr(svc, "get_llm_client", lambda: fake)
+    # Constructed so the existing keyword-selection fallback alone would
+    # reproduce the bug: matched_keywords contains exactly the string the
+    # model echoed, so `pick.keyword in match.matched_keywords` is True and
+    # the ordinary path accepts it -- this is the case the explicit
+    # name-equality guard in classify_draft exists to catch.
+    monkeypatch.setattr(
+        svc,
+        "prefilter",
+        lambda text, top_n=17: [
+            svc.GoalMatch(
+                number=3,
+                name="Good health and well-being",
+                matched_keywords=("Good health and well-being",),
+            )
+        ],
+    )
+
+    result = svc.classify_draft(db_session, draft)
+
+    assert result["classified"] is True
+    assert result["sdg_number"] == 3
+    assert result["sdg_keyword"] != "Good health and well-being"
+    assert result["sdg_keyword"] is None
