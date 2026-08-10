@@ -182,3 +182,45 @@ def test_genuine_fit_with_generic_keyword_but_other_support_is_kept(db_session, 
 
     assert result["classified"] is True
     assert result["sdg_number"] == 3
+
+
+def test_a_correct_goal_ranked_below_the_naive_top_5_still_keeps_its_keyword(db_session, monkeypatch):
+    """Regression test: a paper that lexically matches several goals more
+    heavily than the one it's actually about used to lose that goal's
+    keyword entirely. Capping the shortlist at the top 5 *by match count*
+    (not "does it have a match at all") meant a goal ranked 6th was
+    appended to the prompt as a bare name with zero keywords -- so even
+    when the model correctly identified it, there was no keyword left to
+    pick from, and sdg_keyword silently came back None. This text lexically
+    favours 6 other goals (2 matched keywords each) over the paper's real
+    topic, "Good health and well-being" (1 match, ranked 6th).
+    """
+    from app.services import sdg_classification_service as svc
+
+    draft = _make_draft(
+        db_session,
+        "This study of extreme poverty and poverty alleviation examines rural "
+        "households. It also considers land tenure rights and childhood "
+        "malnutrition in the region. We study school access and education "
+        "quality outcomes. Gender inequality and employment equity gaps are "
+        "also assessed. Freshwater availability and water scarcity are "
+        "surveyed across basins. Energy efficiency and energy transition "
+        "policies are compared. The cohort's primary outcome was "
+        "cardiovascular disease incidence.",
+    )
+    fake = _FakeSDGClient(
+        {
+            "fits": True,
+            "goal_number": 3,
+            "keyword": "cardiovascular disease",
+            "reason": "The paper's primary outcome is cardiovascular disease incidence.",
+        }
+    )
+    monkeypatch.setattr(svc, "get_llm_client", lambda: fake)
+
+    result = svc.classify_draft(db_session, draft)
+
+    assert result["classified"] is True
+    assert result["sdg_number"] == 3
+    assert result["sdg_name"] == "Good health and well-being"
+    assert result["sdg_keyword"] == "cardiovascular disease"

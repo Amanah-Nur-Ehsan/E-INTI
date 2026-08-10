@@ -186,7 +186,16 @@ def classify_draft(session: Session, draft: Draft) -> dict:
     if not text.strip():
         return {"classified": False, "reason": "no_text"}
 
-    candidates = prefilter(text, top_n=5)
+    # top_n is deliberately "every goal", not just the top 5: prefilter's
+    # `hits` dict only ever contains goals that had a real keyword match,
+    # so this costs nothing extra for a paper that only matches a handful
+    # of goals, and it matters a lot for one that doesn't -- capping at 5
+    # was silently stripping the keyword off any correct-but-lower-ranked
+    # goal (e.g. a real "Good health and well-being" match ranked 6th)
+    # before the model ever saw it, so a genuinely correct pick came back
+    # with sdg_keyword=None. Only goals with zero real matches fall back to
+    # a bare name via _augment_with_unmatched below.
+    candidates = prefilter(text, top_n=len(load_sdg_goals()))
     used_fallback = not candidates
     if used_fallback:
         candidates = _fallback_candidates()
