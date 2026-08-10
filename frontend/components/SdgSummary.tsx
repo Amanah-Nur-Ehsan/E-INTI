@@ -13,28 +13,45 @@ export function SdgSummary({
   sdgName,
   sdgKeyword,
   sdgRationale,
+  sdgClosestNumber,
+  sdgClosestName,
 }: {
   sdgNumber: number | null | undefined;
   sdgName: string | null | undefined;
   sdgKeyword: string | null | undefined;
   sdgRationale: string | null | undefined;
+  sdgClosestNumber?: number | null | undefined;
+  sdgClosestName?: string | null | undefined;
 }) {
   // SdgSummary only mounts once analysis has completed, so classification
   // has definitely run by the time this renders. A missing sdgNumber with
   // a rationale present means the classifier looked at all 17 goals and
   // genuinely found none that fit -- that's a real, informative outcome,
   // not a loading state, so it gets its own message instead of vanishing
-  // silently (see sdg_classification_service.py's `fits` field).
+  // silently (see sdg_classification_service.py's `fits` field). The
+  // closest candidate it considered is still shown, clearly labeled as
+  // unconfirmed, so a decline isn't a dead end with nothing to look at --
+  // it is never written into the exported docx (see docx_writer.py's
+  // no-op-when-declined guard).
   if (!sdgNumber) {
     if (!sdgRationale) return null;
     return (
       <Card className="p-3">
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
           <Badge variant="outline" className="bg-gray-100 text-gray-700 border-gray-200">
             No SDG matched
           </Badge>
+          {sdgClosestNumber && (
+            <span className="flex items-center gap-1 text-muted-foreground">
+              Closest candidate: SDG {sdgClosestNumber}
+              {sdgClosestName ? ` — ${sdgClosestName}` : ""} (unconfirmed)
+            </span>
+          )}
         </div>
-        <p className="mt-1 text-xs text-muted-foreground">{sdgRationale}</p>
+        <p className="mt-1 flex items-start gap-1 text-xs text-muted-foreground">
+          <span>{sdgRationale}</span>
+          <CopyButton text={sdgRationale} />
+        </p>
       </Card>
     );
   }

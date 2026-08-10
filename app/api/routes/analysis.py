@@ -110,6 +110,8 @@ async def _build_run_status(session, run: AnalysisRun) -> AnalysisRunStatus:
         sdg_name=draft.sdg_name if draft else None,
         sdg_keyword=draft.sdg_keyword if draft else None,
         sdg_rationale=draft.sdg_rationale if draft else None,
+        sdg_closest_number=draft.sdg_closest_number if draft else None,
+        sdg_closest_name=draft.sdg_closest_name if draft else None,
     )
 
 

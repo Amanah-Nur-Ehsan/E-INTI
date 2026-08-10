@@ -105,12 +105,18 @@ def test_fits_false_stores_no_sdg_but_keeps_rationale(db_session, monkeypatch):
         "classified": False,
         "reason": "no_match",
         "sdg_rationale": "Nothing here substantively concerns any of the 17 SDGs.",
+        "sdg_closest_number": 13,
+        "sdg_closest_name": "Climate action",
     }
     db_session.refresh(draft)
     assert draft.sdg_number is None
     assert draft.sdg_name is None
     assert draft.sdg_keyword is None
     assert draft.sdg_rationale == "Nothing here substantively concerns any of the 17 SDGs."
+    # The declined candidate is still recorded, unconfirmed, so the user
+    # has something to look at instead of a dead end.
+    assert draft.sdg_closest_number == 13
+    assert draft.sdg_closest_name == "Climate action"
 
 
 def test_generic_keyword_with_fits_true_is_treated_as_no_match(db_session, monkeypatch):

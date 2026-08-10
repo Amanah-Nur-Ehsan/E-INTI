@@ -335,6 +335,8 @@ export default function Home() {
             sdgName={status?.sdg_name}
             sdgKeyword={status?.sdg_keyword}
             sdgRationale={status?.sdg_rationale}
+            sdgClosestNumber={status?.sdg_closest_number}
+            sdgClosestName={status?.sdg_closest_name}
           />
           <BestReferencesPanel draftId={draftId ?? ""} enabled={isCompleted} />
 

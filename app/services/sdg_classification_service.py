@@ -319,6 +319,11 @@ def classify_draft(session: Session, draft: Draft) -> dict:
         draft.sdg_name = None
         draft.sdg_keyword = None
         draft.sdg_rationale = reason
+        # Not a real classification -- never written into the docx, only
+        # shown as an unconfirmed "closest candidate" (see SdgSummary.tsx)
+        # so a decline isn't a dead end with nothing to look at.
+        draft.sdg_closest_number = match.number
+        draft.sdg_closest_name = match.name
         session.commit()
 
         log.info(
@@ -331,6 +336,8 @@ def classify_draft(session: Session, draft: Draft) -> dict:
             "classified": False,
             "reason": "no_match",
             "sdg_rationale": reason,
+            "sdg_closest_number": match.number,
+            "sdg_closest_name": match.name,
         }
 
     if keyword is None:
@@ -343,6 +350,10 @@ def classify_draft(session: Session, draft: Draft) -> dict:
     draft.sdg_name = match.name
     draft.sdg_keyword = keyword
     draft.sdg_rationale = reason
+    # Clear any stale "closest candidate" from a previous declined run on
+    # this same draft -- a confirmed classification supersedes it.
+    draft.sdg_closest_number = None
+    draft.sdg_closest_name = None
     session.commit()
 
     log.info(

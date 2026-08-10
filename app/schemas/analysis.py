@@ -34,6 +34,10 @@ class AnalysisRunStatus(BaseModel):
     sdg_name: str | None = None
     sdg_keyword: str | None = None
     sdg_rationale: str | None = None
+    #: Set only when the classifier declined (sdg_number is null): the
+    #: best-ranked candidate it considered but judged not a genuine fit.
+    sdg_closest_number: int | None = None
+    sdg_closest_name: str | None = None
 
 
 class AnalysisRunAccepted(BaseModel):

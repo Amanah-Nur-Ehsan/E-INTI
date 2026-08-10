@@ -38,6 +38,14 @@ class Draft(UUIDPrimaryKey, TimestampMixin, Base):
     #: explain the match, and a bare "SDG 3" invites doubt the user can't check.
     sdg_rationale: Mapped[str | None] = mapped_column(Text)
 
+    #: Set only when the classifier declined (sdg_number is null): the
+    #: best-ranked candidate it considered but judged not a genuine fit.
+    #: Shown to the user as an unconfirmed "closest candidate", never
+    #: written into the exported docx -- see classify_draft's `fits` field
+    #: in app/services/sdg_classification_service.py.
+    sdg_closest_number: Mapped[int | None] = mapped_column(Integer)
+    sdg_closest_name: Mapped[str | None] = mapped_column(Text)
+
     claims: Mapped[list["Claim"]] = relationship(  # noqa: F821
         back_populates="draft", cascade="all, delete-orphan"
     )

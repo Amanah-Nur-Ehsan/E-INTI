@@ -540,6 +540,10 @@ export interface components {
             sdg_keyword?: string | null;
             /** Sdg Rationale */
             sdg_rationale?: string | null;
+            /** Sdg Closest Number */
+            sdg_closest_number?: number | null;
+            /** Sdg Closest Name */
+            sdg_closest_name?: string | null;
         };
         /** BestReferenceClaim */
         BestReferenceClaim: {
