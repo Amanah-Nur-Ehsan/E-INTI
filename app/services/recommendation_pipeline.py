@@ -199,16 +199,23 @@ def recommend_for_claim(
 def recommend_for_draft(session: Session, draft_id: uuid.UUID) -> dict:
     """Stage body: recommend references for every citation-worthy claim.
 
-    Verification (stage 4) is the only serial, LLM-paced stage, so it is the
-    entire runtime cost of this stage on a real paper. The product now shows
-    one ranked shortlist of references for the whole draft (see
-    app/api/routes/recommendations.py::best_references), not a per-claim
-    citation list -- so verifying all 137 claims of a real paper to produce
-    a 3-5 item shortlist is mostly wasted spend. Only the claims whose best
-    reranked candidate could plausibly place in that shortlist are worth
-    verifying; the rest are skipped entirely, cutting a 137-claim draft to
-    ~settings.verify_claim_limit LLM calls.
+    The product now shows one ranked shortlist of references for the whole
+    draft (see app/api/routes/recommendations.py::best_references), not a
+    per-claim citation list -- so running retrieval and verification over
+    all 137 claims of a real paper to produce a 3-5 item shortlist is mostly
+    wasted work, and it is wasted at *both* stages:
+
+    - Retrieval (stages 1-3, local models) used to run over every
+      citation-worthy claim and only afterwards keep the top-scoring ones --
+      ~137 SPECTER2 embeddings and ~1,370 cross-encoder pairs to use maybe
+      20. settings.retrieve_claim_limit caps entry into retrieval itself,
+      picked by Claim.claim_confidence (already computed by Tier-1, free to
+      reuse) -- the claims least likely to need a citation at all are also
+      the ones with no realistic path into the shortlist.
+    - Verification (stage 4, LLM-paced) then further narrows to
+      settings.verify_claim_limit by reranked score, unchanged from before.
     """
+    settings = get_settings()
     claims = list(
         session.execute(
             select(Claim)
@@ -219,9 +226,15 @@ def recommend_for_draft(session: Session, draft_id: uuid.UUID) -> dict:
     if not claims:
         return {"claims_processed": 0, "recommendations": 0}
 
+    retrieve_limit = settings.retrieve_claim_limit
+    if retrieve_limit and len(claims) > retrieve_limit:
+        claims = sorted(claims, key=lambda c: c.claim_confidence or 0.0, reverse=True)
+        claims = claims[:retrieve_limit]
+        claims.sort(key=lambda c: c.char_start or 0)
+
     corpus = LibraryCorpus(session)
 
-    # Stages 1-3 batched across every claim -- cheap, local-model work.
+    # Stages 1-3 batched across every claim.
     prepared = _retrieve_and_prerank(session, claims, corpus)
     all_scores = _rerank_all(prepared)
 
