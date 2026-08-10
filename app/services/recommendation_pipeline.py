@@ -8,6 +8,7 @@ dispatches, which is where most of the local-model time was going.
 """
 
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from sqlalchemy import delete, select
@@ -27,7 +28,12 @@ from app.services.retrieval_service import (
     vector_search,
 )
 from app.services.scoring import compute_score
-from app.services.verification_service import verify_candidates
+from app.services.verification_service import (
+    VerdictBatch,
+    apply_verification,
+    plan_verification,
+    run_verification_llm,
+)
 
 log = get_logger(__name__)
 
@@ -103,10 +109,25 @@ def _rerank_all(prepared: list[_ClaimCandidates]) -> list[list[float]]:
     return sliced
 
 
-def _verify_and_persist(
+@dataclass
+class _ClaimPlan:
+    """Everything phase A resolved for one claim, awaiting phase B's LLM
+    result. `top` carries the reranker score alongside each candidate
+    since stage 5's scoring needs it and phase B/C don't recompute it.
+    """
+
+    claim: Claim
+    top: list[tuple]
+    outcomes: dict
+    pending: list
+
+
+def _plan_claim(
     session: Session, claim: Claim, candidates: list, reranker_scores: list[float]
-) -> int:
-    """Stages 4-5 for one claim: verify, score, replace its rows."""
+) -> _ClaimPlan:
+    """Stage 4 phase A for one claim: pick the top verify_limit candidates
+    by reranker score and resolve everything that doesn't need a call.
+    """
     # Sort by reranker score before slicing -- candidates/reranker_scores are
     # zipped in *prerank* order, so slicing candidates[:n] directly would
     # verify the wrong subset (the top-n by prerank, not by reranker).
@@ -115,25 +136,39 @@ def _verify_and_persist(
     )
     top = ranked[: get_settings().verify_limit]
 
-    # Stage 4: semantic support verification (cached). Verifying only the
-    # top VERIFY_LIMIT (not every reranked candidate) is what keeps a
-    # single claim from costing 10 Tier-2 calls when only a handful are
-    # ever going to be shown.
     # The verified claim text must match what claim_hash was computed from
     # (the source sentence, not the LLM's paraphrase) -- otherwise the cache
     # key and the cached content answer two different questions, and a
     # re-run with a drifted paraphrase would silently return a stale verdict.
-    outcomes = verify_candidates(
-        session,
-        claim_text=claim.sentence_text,
-        claim_context=claim.local_context,
-        claim_hash=claim.claim_hash or "",
-        candidates=[candidate for candidate, _ in top],
+    outcomes, pending = plan_verification(
+        session, claim.claim_hash or "", [candidate for candidate, _ in top]
+    )
+    return _ClaimPlan(claim=claim, top=top, outcomes=outcomes, pending=pending)
+
+
+def _run_claim_llm(plan: _ClaimPlan) -> VerdictBatch | None:
+    """Stage 4 phase B for one claim. Pure -- safe to run in a thread pool
+    across claims. Skips the call entirely when nothing is pending, rather
+    than spending a request (and a thread) to verify zero candidates.
+    """
+    if not plan.pending:
+        return None
+    return run_verification_llm(plan.claim.sentence_text, plan.claim.local_context, plan.pending)
+
+
+def _persist_claim(session: Session, plan: _ClaimPlan, batch: VerdictBatch | None) -> int:
+    """Stage 4 phase C + stage 5 for one claim: resolve verdicts, score,
+    replace its recommendation rows. No commit -- the caller commits once
+    after every claim in the batch has been persisted.
+    """
+    settings = get_settings()
+    model_name = "mock" if settings.llm_mocked else settings.tier2_model
+    outcomes = apply_verification(
+        session, plan.claim.claim_hash or "", plan.outcomes, plan.pending, batch, model_name
     )
 
-    # Stage 5: final score with caps.
     scored = []
-    for candidate, reranker_score in top:
+    for candidate, reranker_score in plan.top:
         outcome = outcomes[candidate.reference_id]
         breakdown = compute_score(
             semantic_similarity=candidate.semantic_similarity,
@@ -151,12 +186,12 @@ def _verify_and_persist(
     scored.sort(key=lambda item: item[2].score_percentage, reverse=True)
 
     session.execute(
-        delete(CitationRecommendation).where(CitationRecommendation.claim_id == claim.id)
+        delete(CitationRecommendation).where(CitationRecommendation.claim_id == plan.claim.id)
     )
     for rank, (candidate, outcome, breakdown) in enumerate(scored, start=1):
         session.add(
             CitationRecommendation(
-                claim_id=claim.id,
+                claim_id=plan.claim.id,
                 reference_id=candidate.reference_id,
                 rank=rank,
                 semantic_similarity=candidate.semantic_similarity,
@@ -175,7 +210,6 @@ def _verify_and_persist(
             )
         )
 
-    session.commit()
     return len(scored)
 
 
@@ -187,13 +221,19 @@ def recommend_for_claim(
     """Run stages 1-5 for one claim and persist its top-3. Returns the count.
 
     A single-claim wrapper over the same passes `recommend_for_draft` uses,
-    kept so callers and tests that work one claim at a time still can.
+    kept so callers and tests that work one claim at a time still can. The
+    LLM call runs directly rather than through a pool -- there is only one
+    claim, nothing to parallelize against.
     """
     prepared = _retrieve_and_prerank(session, [claim], corpus)
     if not prepared:
         return 0
     scores = _rerank_all(prepared)
-    return _verify_and_persist(session, claim, prepared[0].candidates, scores[0])
+    plan = _plan_claim(session, claim, prepared[0].candidates, scores[0])
+    batch = _run_claim_llm(plan)
+    total = _persist_claim(session, plan, batch)
+    session.commit()
+    return total
 
 
 def recommend_for_draft(session: Session, draft_id: uuid.UUID) -> dict:
@@ -261,9 +301,32 @@ def recommend_for_draft(session: Session, draft_id: uuid.UUID) -> dict:
             )
         )
 
-    total = 0
-    for item, reranker_scores in to_verify:
-        total += _verify_and_persist(session, item.claim, item.candidates, reranker_scores)
+    # Phase A (session, serial): resolve caches + no-abstract short-circuits
+    # for every claim before any LLM call is made.
+    plans = [
+        _plan_claim(session, item.claim, item.candidates, reranker_scores)
+        for item, reranker_scores in to_verify
+    ]
+
+    # Phase B (no session, concurrent): each claim's Tier-2 call is
+    # independent of every other claim's, so they run in a bounded thread
+    # pool instead of one at a time -- this is the actual wall-clock win.
+    # pool.map keeps `batches` index-aligned with `plans`.
+    if plans:
+        with ThreadPoolExecutor(
+            max_workers=min(settings.llm_max_concurrency, len(plans))
+        ) as pool:
+            batches = list(pool.map(_run_claim_llm, plans))
+    else:
+        batches = []
+
+    # Phase C (session, serial): apply each claim's result and persist.
+    # One commit for the whole draft rather than one per claim.
+    total = sum(
+        _persist_claim(session, plan, batch)
+        for plan, batch in zip(plans, batches, strict=True)
+    )
+    session.commit()
 
     return {"claims_processed": len(claims), "recommendations": total}
 

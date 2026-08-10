@@ -68,6 +68,35 @@ async def test_contradicting_reference_is_capped(client, analyzed):
         assert rec["recommended_usage"] == "Do not cite"
 
 
+async def test_concurrent_verification_does_not_cross_contaminate_claims(client, analyzed):
+    """Stage 4's LLM call now runs in a thread pool across claims. The
+    failure mode a race would produce is exactly this: claim A ending up
+    with claim B's verdict. Checking two *different* claims land on their
+    own distinct, correct top reference in the same assertion is what
+    would catch results getting swapped between concurrently-running
+    threads -- a single-claim check can't distinguish "correct" from
+    "coincidentally still correct because nothing raced."
+    """
+    draft_id = analyzed
+    claims = await _claims(client, draft_id)
+
+    opening = next(c for c in claims if c["sentence_text"].startswith(OPENING_CLAIM))
+    opening_recs = (await client.get(f"/api/v1/claims/{opening['id']}/recommendations")).json()
+    assert opening_recs[0]["reference"]["title"] == SUPPORTING_TITLE
+    assert opening_recs[0]["verdict"] == Verdict.SUPPORTED
+
+    drift_claim_text = "Deployed detectors lose a substantial share of their recall"
+    drift = next(c for c in claims if c["sentence_text"].startswith(drift_claim_text))
+    drift_recs = (await client.get(f"/api/v1/claims/{drift['id']}/recommendations")).json()
+    assert drift_recs, "expected recommendations for the concept-drift claim"
+    assert drift_recs[0]["reference"]["title"] == "Concept Drift in Deployed Fraud Detection Systems"
+    assert drift_recs[0]["verdict"] in (Verdict.SUPPORTED, Verdict.PARTIALLY_SUPPORTED)
+
+    # The two claims' top picks must differ -- if phase B's results ever
+    # got swapped between threads, this is the check that would catch it.
+    assert opening_recs[0]["reference"]["title"] != drift_recs[0]["reference"]["title"]
+
+
 async def test_no_more_than_five_recommendations_per_claim(client, analyzed):
     draft_id = analyzed
     for claim in await _claims(client, draft_id):

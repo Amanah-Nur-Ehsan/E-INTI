@@ -185,23 +185,19 @@ def _skipped_outcome() -> VerificationOutcome:
     )
 
 
-def verify_candidates(
-    session: Session,
-    claim_text: str,
-    claim_context: str,
-    claim_hash: str,
-    candidates: list[Candidate],
-) -> dict[uuid.UUID, VerificationOutcome]:
-    """Verify each candidate, consulting and populating the cache.
+def plan_verification(
+    session: Session, claim_hash: str, candidates: list[Candidate]
+) -> tuple[dict[uuid.UUID, VerificationOutcome], list[Candidate]]:
+    """Phase A: cache lookups + the no-abstract short-circuit.
 
-    Every candidate needing the model goes in a *single* Tier-2 call
-    rather than one call each: at verify_limit=3 that is 3x fewer
-    requests against the rate limit, and fewer tokens too, since the
-    system prompt and the claim are sent once instead of per candidate.
+    The only phase that touches the session, and the only one that must
+    run before any LLM call -- splitting it out is what lets the LLM call
+    (phase B, run_verification_llm) run in a thread pool alongside other
+    claims' calls without touching a SQLAlchemy session from a worker
+    thread. Returns the outcomes already resolved without a call, and the
+    candidates still needing one. No commit; the caller commits once after
+    persisting every claim in a batch (see recommendation_pipeline.py).
     """
-    settings = get_settings()
-    model_name = "mock" if settings.llm_mocked else settings.tier2_model
-
     outcomes = _load_cache(session, claim_hash, [c.reference_id for c in candidates])
 
     pending: list[Candidate] = []
@@ -214,10 +210,19 @@ def verify_candidates(
             continue
         pending.append(candidate)
 
-    if not pending:
-        session.commit()
-        return outcomes
+    return outcomes, pending
 
+
+def run_verification_llm(
+    claim_text: str, claim_context: str, pending: list[Candidate]
+) -> VerdictBatch | None:
+    """Phase B: the LLM call alone. Pure -- no session, no cache access --
+    which is what makes it safe to run concurrently across claims in a
+    thread pool. Call only when `pending` is non-empty; `None` means the
+    whole batch failed (transport retries and the Gemini fallback both
+    exhausted), which apply_verification degrades to SKIPPED for every
+    candidate in it rather than inventing a verdict.
+    """
     # Batch-local numbering 0..n-1, mapped back via `pending[idx]` -- models
     # renumber sequentially regardless of what they are given, so this is
     # the only mapping that survives (same discipline as classify_batch).
@@ -232,21 +237,37 @@ def verify_candidates(
         )
         for idx, candidate in enumerate(pending)
     )
-    user = VERIFY_USER_TEMPLATE.format(
-        claim=claim_text, context=claim_context, candidates=blocks
-    )
+    user = VERIFY_USER_TEMPLATE.format(claim=claim_text, context=claim_context, candidates=blocks)
 
     try:
-        batch = get_llm_client().complete_structured(
+        return get_llm_client().complete_structured(
             tier=Tier.VERIFY, system=VERIFY_SYSTEM, user=user, schema=VerdictBatch
         )
     except LLMOutputError as exc:
-        # The whole batch is unusable. Degrade every candidate in it to
-        # SKIPPED -- visible, and never cached, so a retry re-verifies.
         log.warning("verification_unavailable", candidates=len(pending), error=str(exc))
+        return None
+
+
+def apply_verification(
+    session: Session,
+    claim_hash: str,
+    outcomes: dict[uuid.UUID, VerificationOutcome],
+    pending: list[Candidate],
+    batch: VerdictBatch | None,
+    model_name: str,
+) -> dict[uuid.UUID, VerificationOutcome]:
+    """Phase C: turn phase B's result into outcomes and cache rows.
+
+    Mutates and returns `outcomes` (phase A's dict) so cached and
+    freshly-verified candidates end up in the same mapping. No commit --
+    same reason as plan_verification.
+    """
+    if batch is None:
+        # Covers both "the call failed" and "there was nothing pending" --
+        # identical no-op behavior when `pending` is empty either way, so
+        # callers don't need a distinct sentinel for the two.
         for candidate in pending:
             outcomes[candidate.reference_id] = _skipped_outcome()
-        session.commit()
         return outcomes
 
     by_idx: dict[int, CandidateVerdict] = {}
@@ -268,5 +289,38 @@ def verify_candidates(
         outcomes[candidate.reference_id] = outcome
         _store_cache(session, claim_hash, candidate.reference_id, outcome, model_name)
 
+    return outcomes
+
+
+def verify_candidates(
+    session: Session,
+    claim_text: str,
+    claim_context: str,
+    claim_hash: str,
+    candidates: list[Candidate],
+) -> dict[uuid.UUID, VerificationOutcome]:
+    """Verify each candidate, consulting and populating the cache.
+
+    Every candidate needing the model goes in a *single* Tier-2 call
+    rather than one call each: at verify_limit=3 that is 3x fewer
+    requests against the rate limit, and fewer tokens too, since the
+    system prompt and the claim are sent once instead of per candidate.
+
+    A thin wrapper over the three phases above, for callers that verify
+    one claim in isolation (recommend_for_claim, this module's own tests).
+    recommend_for_draft calls plan_verification / run_verification_llm /
+    apply_verification directly so phase B can run concurrently across
+    claims instead of one call at a time.
+    """
+    settings = get_settings()
+    model_name = "mock" if settings.llm_mocked else settings.tier2_model
+
+    outcomes, pending = plan_verification(session, claim_hash, candidates)
+    if not pending:
+        session.commit()
+        return outcomes
+
+    batch = run_verification_llm(claim_text, claim_context, pending)
+    outcomes = apply_verification(session, claim_hash, outcomes, pending, batch, model_name)
     session.commit()
     return outcomes
