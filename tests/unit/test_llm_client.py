@@ -5,6 +5,9 @@ referencing groq.com in some historical comments); the logic is provider-
 agnostic and now runs against DeepSeek.
 """
 
+import threading
+import time
+
 import httpx
 import pytest
 from openai import APIStatusError, RateLimitError
@@ -178,6 +181,7 @@ class _PacingClient(DeepSeekGeminiClient):
         self._primary = None
         self._gemini = None
         self._next_request_at = 0.0
+        self._pace_lock = threading.Lock()
 
 
 def test_pacing_is_start_to_start_not_end_to_start(monkeypatch, settings):
@@ -227,3 +231,63 @@ def test_pacing_does_not_sleep_when_the_window_already_elapsed(monkeypatch, sett
 
     assert sleeps == []
     assert client._next_request_at == pytest.approx(11.1)
+
+
+def test_concurrent_pacing_gives_every_thread_a_distinct_slot(settings, monkeypatch):
+    """Threads must stagger by the floor, never share or skip a slot.
+
+    The client is a process-wide singleton, so `_next_request_at` is real
+    concurrent state. Read-modify-write without a lock lets two threads
+    compute the same slot and fire simultaneously, silently doubling the
+    request rate the floor exists to cap.
+    """
+    monkeypatch.setattr(settings, "llm_min_seconds_between_requests", 0.5)
+    client = _PacingClient(settings)
+
+    slots: list[float] = []
+    slots_lock = threading.Lock()
+    start = threading.Barrier(8)
+
+    def reserve():
+        start.wait()  # maximize the overlap the race would need
+        slot = client._reserve_slot()
+        with slots_lock:
+            slots.append(slot)
+
+    threads = [threading.Thread(target=reserve) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(set(slots)) == 8, "two threads were handed the same start slot"
+    ordered = sorted(slots)
+    gaps = [b - a for a, b in zip(ordered, ordered[1:], strict=False)]
+    assert all(gap == pytest.approx(0.5) for gap in gaps), gaps
+
+
+def test_pace_sleeps_outside_the_lock_so_threads_do_not_serialize(settings, monkeypatch):
+    """Booking is exclusive; waiting is not.
+
+    Holding the lock across the sleep would turn N concurrent calls into
+    `floor * N` of wall-clock -- correct, but it would undo exactly the
+    concurrency this pacing was reworked to allow. Asserted by checking
+    the lock is free while a thread is inside its pacing sleep.
+    """
+    monkeypatch.setattr(settings, "llm_min_seconds_between_requests", 0.5)
+    client = _PacingClient(settings)
+    client._next_request_at = time.monotonic() + 0.2  # force a real wait
+
+    lock_was_free_during_sleep = threading.Event()
+
+    def observe(_seconds):
+        # Called from inside _pace()'s sleep. If the lock were held here,
+        # acquire(blocking=False) would fail.
+        if client._pace_lock.acquire(blocking=False):
+            client._pace_lock.release()
+            lock_was_free_during_sleep.set()
+
+    monkeypatch.setattr("app.services.llm_client.time.sleep", observe)
+    client._pace()
+
+    assert lock_was_free_during_sleep.is_set()

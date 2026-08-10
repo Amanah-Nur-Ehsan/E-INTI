@@ -59,18 +59,29 @@ class Settings(BaseSettings):
     # LLM pacing and rate limiting. Unlike Groq's free tier, DeepSeek does
     # not enforce a hard per-minute token ceiling -- the real bottleneck
     # this project hit was never request volume (Groq's RPM had headroom
-    # the whole time), it was Groq's *token*-per-minute cap. 0.3s is
-    # conservative client-side pacing, not a limit DeepSeek imposes; lower
-    # it if latency, not throttling, becomes the bottleneck instead.
-    llm_min_seconds_between_requests: float = 0.3
+    # the whole time), it was Groq's *token*-per-minute cap. This is a
+    # *global* floor on the gap between call starts, shared by every thread
+    # in the process, so 1/floor is the hard req/s ceiling for the whole
+    # worker: at the old 0.3 it capped everything at 3.3 req/s and would
+    # have throttled llm_max_concurrency to near-nothing.
+    llm_min_seconds_between_requests: float = 0.1
     llm_max_attempts: int = 5
     llm_retry_base_seconds: float = 2.0
     llm_max_backoff_seconds: float = 60.0
     llm_timeout_seconds: float = 60.0
+    #: In-flight LLM calls per analysis. The stages that use it (Tier-1
+    #: batches, Tier-2 per-claim verification) are independent of each
+    #: other, so the only reason they were ever serial was that nothing
+    #: ran them concurrently. Worst case in flight across the worker is
+    #: celery_concurrency * this; these are network waits, not CPU, so
+    #: they cost nothing against the CPU budget below.
+    llm_max_concurrency: int = 10
     #: Tier-2 verification calls per claim (was: all 10 reranked candidates).
     verify_limit: int = 3
-    #: Sentences per Tier-1 classification call.
-    classify_batch_size: int = 10
+    #: Sentences per Tier-1 classification call. Larger batches mean fewer
+    #: round trips for the same work -- 25 turns a ~300-sentence paper's
+    #: ~30 Tier-1 calls into ~12.
+    classify_batch_size: int = 25
     #: The product now surfaces one ranked shortlist of references for the
     #: whole paper (see best_reference_* below), not a per-claim citation
     #: list -- so verifying every citation-worthy claim is mostly wasted
@@ -80,6 +91,35 @@ class Settings(BaseSettings):
     #: handful of well-matched claims to be found. On a 137-claim paper this
     #: is the difference between ~137 paced LLM calls and ~20.
     verify_claim_limit: int = 20
+    #: How many claims enter *retrieval* at all (embedding + vector search
+    #: + reranking), picked by Claim.claim_confidence descending. 0 = all.
+    #:
+    #: This is the single largest CPU saving in the pipeline. Retrieval used
+    #: to run over every citation-worthy claim (~137 on a real paper:
+    #: ~137 SPECTER2 embeddings and ~1,370 cross-encoder pairs) and only
+    #: *then* keep the top verify_claim_limit -- so ~85% of the heaviest
+    #: compute was produced and discarded. Capping here instead of after
+    #: cuts that work ~3.4x, which is what makes a CPU-only server viable.
+    #:
+    #: Tradeoff, stated plainly: references are searched for among the N
+    #: most confidently-citation-worthy claims rather than all of them. With
+    #: only a handful of paper-level slots to fill that is very unlikely to
+    #: change the result, but it *is* a behaviour change -- set 0 to restore
+    #: the old exhaustive behaviour.
+    retrieve_claim_limit: int = 40
+
+    # Local-model CPU budget. torch defaults to using every core, which on
+    # a shared box starves everything else -- these two settings together
+    # are what bound it. torch_num_threads caps intra-op parallelism, and
+    # device.local_inference()'s semaphore ensures only one analysis runs
+    # torch at a time, so peak stays near one core regardless of how many
+    # analyses are in flight. Raise torch_num_threads to trade CPU headroom
+    # for faster embedding/reranking.
+    torch_num_threads: int = 1
+    #: Concurrent analyses. Informational for app code (the real value is
+    #: --concurrency on the worker command line); kept here so the CPU
+    #: budget above can be reasoned about in one place.
+    celery_concurrency: int = 2
 
     # "Which single reference should this paper cite" thresholds. Below
     # min_score the match is too weak to present as usable; at or above

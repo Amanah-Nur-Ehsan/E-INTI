@@ -11,6 +11,7 @@ never imports torch.
 """
 
 import hashlib
+import threading
 import uuid
 from collections import namedtuple
 
@@ -27,6 +28,7 @@ log = get_logger(__name__)
 EMBEDDING_DIM = 768
 MAX_TOKENS = 512
 _service: "EmbeddingService | None" = None
+_service_lock = threading.Lock()
 
 
 def content_hash(text: str) -> str:
@@ -95,6 +97,8 @@ class EmbeddingService:
         if batch_size is None:
             batch_size = 16 if self._device in ("mps", "cuda") else 8
 
+        from app.core.device import local_inference
+
         vectors: list[np.ndarray] = []
         for start in range(0, len(texts), batch_size):
             batch = texts[start : start + batch_size]
@@ -105,7 +109,9 @@ class EmbeddingService:
                 max_length=MAX_TOKENS,
                 return_tensors="pt",
             ).to(self._device)
-            with torch.inference_mode():
+            # Held per batch, not around the whole loop: a long draft must
+            # not lock out another analysis for its entire encode.
+            with local_inference(), torch.inference_mode():
                 output = self._model(**encoded)
             # SPECTER2 convention: the CLS token is the document vector.
             cls = output.last_hidden_state[:, 0, :]
@@ -119,9 +125,13 @@ class EmbeddingService:
 
 
 def get_embedding_service() -> EmbeddingService:
+    """Process-wide singleton, double-checked so concurrent worker threads
+    can't both start loading several hundred MB of model weights."""
     global _service
     if _service is None:
-        _service = EmbeddingService()
+        with _service_lock:
+            if _service is None:
+                _service = EmbeddingService()
     return _service
 
 

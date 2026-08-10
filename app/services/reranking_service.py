@@ -6,6 +6,7 @@ parameters, so it is cheap enough to run on CPU in production.
 """
 
 import math
+import threading
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -13,7 +14,11 @@ from app.core.logging import get_logger
 log = get_logger(__name__)
 
 MAX_ABSTRACT_CHARS = 1500
+#: Pairs per forward pass. Also the granularity at which the inference
+#: semaphore is released, so another analysis can interleave.
+PREDICT_BATCH_SIZE = 64
 _service: "RerankingService | None" = None
+_service_lock = threading.Lock()
 
 
 def _sigmoid(value: float) -> float:
@@ -44,15 +49,29 @@ class RerankingService:
             return [fake_score(query, document) for query, document in pairs]
 
         self._load()
-        raw = self._model.predict(pairs, show_progress_bar=False)
+
+        from app.core.device import local_inference
+
+        # Chunked so the semaphore is released between passes -- the caller
+        # hands us every claim's pairs at once, which would otherwise hold
+        # the CPU for the whole draft and starve any concurrent analysis.
+        raw: list[float] = []
+        for start in range(0, len(pairs), PREDICT_BATCH_SIZE):
+            chunk = pairs[start : start + PREDICT_BATCH_SIZE]
+            with local_inference():
+                raw.extend(self._model.predict(chunk, show_progress_bar=False))
         # ms-marco cross-encoders emit unbounded logits; squash to [0, 1].
         return [_sigmoid(float(value)) for value in raw]
 
 
 def get_reranking_service() -> RerankingService:
+    """Process-wide singleton, double-checked so concurrent worker threads
+    can't both start loading the cross-encoder."""
     global _service
     if _service is None:
-        _service = RerankingService()
+        with _service_lock:
+            if _service is None:
+                _service = RerankingService()
     return _service
 
 

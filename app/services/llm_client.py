@@ -27,6 +27,7 @@ landed in a bare `except Exception` that `break`s after one HTTP attempt.
 
 import json
 import re
+import threading
 import time
 from enum import StrEnum
 from functools import lru_cache
@@ -147,6 +148,10 @@ class DeepSeekGeminiClient:
         #: rather than completions is what makes the pacing floor mean what
         #: it says -- see _pace().
         self._next_request_at = 0.0
+        #: Guards _next_request_at. This client is a process-wide singleton
+        #: (get_llm_client is lru_cached) shared by every worker thread, so
+        #: the schedule is genuinely concurrent state.
+        self._pace_lock = threading.Lock()
 
     def _primary_client(self):
         if self._primary is None:
@@ -170,6 +175,19 @@ class DeepSeekGeminiClient:
     def _model_for(self, tier: Tier) -> str:
         return self.settings.tier1_model if tier is Tier.CLASSIFY else self.settings.tier2_model
 
+    def _reserve_slot(self, spacing: float | None = None) -> float:
+        """Claim the next start time, returning the instant to wait until.
+
+        Kept separate from the sleeping so callers hold the lock only long
+        enough to book -- see _pace().
+        """
+        if spacing is None:
+            spacing = self.settings.llm_min_seconds_between_requests
+        with self._pace_lock:
+            slot = max(time.monotonic(), self._next_request_at)
+            self._next_request_at = slot + spacing
+            return slot
+
     def _pace(self) -> None:
         """Block until this request's scheduled start, then book the next.
 
@@ -178,12 +196,16 @@ class DeepSeekGeminiClient:
         halves effective throughput once any real model latency is added
         on top. Scheduling from the start means the floor is the floor
         regardless of how slow any one call is.
+
+        Booking happens under the lock but the *sleep* deliberately does
+        not: N threads each take a distinct successive slot and then wait
+        in parallel, so they stagger `floor` apart. Sleeping while holding
+        the lock would serialize them into `floor * N` instead, undoing
+        the concurrency it exists to support.
         """
-        now = time.monotonic()
-        if now < self._next_request_at:
-            time.sleep(self._next_request_at - now)
-            now = self._next_request_at
-        self._next_request_at = now + self.settings.llm_min_seconds_between_requests
+        wait = self._reserve_slot() - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
 
     def _observe_rate_limit(self, headers) -> None:
         """Mirrors scopus_service._observe_rate_limit: sleep proactively
@@ -206,9 +228,15 @@ class DeepSeekGeminiClient:
                 "llm_quota_low",
                 requests_left=requests_left,
                 tokens_left=tokens_left,
-                sleeping_for=round(wait, 1),
+                delaying_schedule_by=round(wait, 1),
             )
-            time.sleep(wait)
+            # Delay the *shared* schedule instead of sleeping this thread.
+            # This runs after the response is already in hand, so what needs
+            # to back off is whoever calls next -- and with several threads
+            # in flight, a local sleep would throttle exactly one of them
+            # while every other sailed straight past the warning.
+            with self._pace_lock:
+                self._next_request_at = max(time.monotonic(), self._next_request_at) + wait
 
     def _call_primary(self, tier: Tier, system: str, user: str) -> str:
         self._pace()
