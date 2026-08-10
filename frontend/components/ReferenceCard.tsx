@@ -64,7 +64,7 @@ export function ReferenceCard({ draftId, item }: { draftId: string; item: BestRe
   const { before, match, after } = splitAroundSentence(claim.local_context, claim.sentence_text);
 
   return (
-    <Card className="p-4">
+    <Card className={cn("p-4", accepted && "border-green-300 bg-green-50/40")}>
       {!meets_threshold && (
         <p className="mb-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
           Closest match found, but below the {item.min_score_threshold}% threshold -- treat as a
@@ -140,13 +140,17 @@ export function ReferenceCard({ draftId, item }: { draftId: string; item: BestRe
           </Button>
           <Button
             size="sm"
-            variant={accepted ? "secondary" : "default"}
+            variant={accepted ? "outline" : "default"}
+            className={cn(
+              accepted &&
+                "border-green-300 bg-green-100 text-green-800 hover:bg-green-100 dark:border-green-800 dark:bg-green-950 dark:text-green-300",
+            )}
             disabled={setDecision.isPending || accepted}
             onClick={() =>
               setDecision.mutate({ recommendationId: recommendation.id, decision: "ACCEPTED" })
             }
           >
-            {accepted ? "Used" : "Use this"}
+            {accepted ? "✓ Used in paper" : "Use this"}
           </Button>
         </div>
 

@@ -160,6 +160,13 @@ export function useSetDecision(draftId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["drafts", draftId, "recommendations"] });
       queryClient.invalidateQueries({ queryKey: ["drafts", draftId, "accepted-citations"] });
+      // ReferenceCard reads its accepted/"Used" state from
+      // recommendation.user_decision on *this* query (best-reference and
+      // best-references, both keyed by this prefix) -- without
+      // invalidating it too, a refetch or remount after "Use this" would
+      // silently show stale (pre-accept) state.
+      queryClient.invalidateQueries({ queryKey: ["drafts", draftId, "best-reference"] });
+      queryClient.invalidateQueries({ queryKey: ["drafts", draftId, "best-references"] });
     },
   });
 }

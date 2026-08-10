@@ -330,28 +330,6 @@ export default function Home() {
 
       {isCompleted && (
         <>
-          {hasAcceptedCitation && (
-            <div className="flex justify-end">
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={createExport.isPending}
-                onClick={async () => {
-                  const exportResult = await createExport.mutateAsync({
-                    format: "docx",
-                    citation_style: "APA",
-                    insertion_mode: "tracked_changes",
-                    // The audit table is an internal QA report, not manuscript
-                    // content -- the exported paper should come back clean.
-                    include_audit_report: false,
-                  });
-                  window.location.href = downloadUrl(exportResult.id);
-                }}
-              >
-                {createExport.isPending ? "Preparing…" : "Download DOCX"}
-              </Button>
-            </div>
-          )}
           <SdgSummary
             sdgNumber={status?.sdg_number}
             sdgName={status?.sdg_name}
@@ -359,6 +337,32 @@ export default function Home() {
             sdgRationale={status?.sdg_rationale}
           />
           <BestReferencesPanel draftId={draftId ?? ""} enabled={isCompleted} />
+
+          <div className="flex flex-col items-end gap-1">
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={createExport.isPending || !hasAcceptedCitation}
+              onClick={async () => {
+                const exportResult = await createExport.mutateAsync({
+                  format: "docx",
+                  citation_style: "APA",
+                  insertion_mode: "tracked_changes",
+                  // The audit table is an internal QA report, not manuscript
+                  // content -- the exported paper should come back clean.
+                  include_audit_report: false,
+                });
+                window.location.href = downloadUrl(exportResult.id);
+              }}
+            >
+              {createExport.isPending ? "Preparing…" : "Download DOCX"}
+            </Button>
+            {!hasAcceptedCitation && (
+              <span className="text-xs text-muted-foreground">
+                Select at least one citation to download
+              </span>
+            )}
+          </div>
         </>
       )}
     </main>
