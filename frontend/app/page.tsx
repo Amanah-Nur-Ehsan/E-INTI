@@ -2,7 +2,8 @@
 
 import { Download, Loader2 } from "lucide-react";
 import { useState } from "react";
-import { BestReferencePanel } from "@/components/BestReferencePanel";
+import { BestReferencesPanel } from "@/components/BestReferencesPanel";
+import { SdgSummary } from "@/components/SdgSummary";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -351,14 +352,13 @@ export default function Home() {
               </Button>
             </div>
           )}
-          <BestReferencePanel
-            draftId={draftId ?? ""}
-            enabled={isCompleted}
+          <SdgSummary
             sdgNumber={status?.sdg_number}
             sdgName={status?.sdg_name}
             sdgKeyword={status?.sdg_keyword}
             sdgRationale={status?.sdg_rationale}
           />
+          <BestReferencesPanel draftId={draftId ?? ""} enabled={isCompleted} />
         </>
       )}
     </main>

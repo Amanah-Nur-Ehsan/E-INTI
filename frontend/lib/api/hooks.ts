@@ -179,6 +179,21 @@ export function useBestReference(draftId: string, enabled = true) {
   });
 }
 
+export function useBestReferences(draftId: string, enabled = true, limit = 5) {
+  return useQuery({
+    queryKey: ["drafts", draftId, "best-references", { limit }],
+    queryFn: () =>
+      api.get("/api/v1/drafts/{draft_id}/best-references", {
+        params: { draft_id: draftId },
+        query: { limit },
+      }),
+    // Same reasoning as useBestReference: nothing to fetch until analysis
+    // has actually produced recommendations.
+    enabled: Boolean(draftId) && enabled,
+    retry: false,
+  });
+}
+
 export function useRewriteParagraph() {
   return useMutation({
     mutationFn: ({ recommendationId, style }: { recommendationId: string; style: string }) =>
