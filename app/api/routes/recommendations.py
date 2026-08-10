@@ -170,6 +170,58 @@ async def best_reference_for_draft(draft: DraftDep, session: SessionDep) -> Best
     )
 
 
+@router.get("/drafts/{draft_id}/best-references", response_model=list[BestReferenceRead])
+async def best_references_for_draft(
+    draft: DraftDep, session: SessionDep, limit: int = Query(default=5, ge=1, le=20)
+) -> list[BestReferenceRead]:
+    """The N best references for this paper as a whole -- a ranked
+    shortlist rather than the single pick /best-reference returns, for
+    "which references should I actually cite" instead of "give me one."
+
+    Mirrors /best-reference's query and threshold logic exactly, just
+    without the .limit(1): every claim's rank=1 recommendation, ordered by
+    score. The same reference can legitimately be the strongest match for
+    more than one claim, so rows are deduped by reference_id (keeping each
+    reference's highest-scoring claim, since the ordering already put that
+    one first) before truncating to `limit` -- otherwise a paper with one
+    dominant reference could fill the whole shortlist with itself.
+    """
+    rows = (
+        await session.execute(
+            select(CitationRecommendation, ReferencePaper, Claim)
+            .join(ReferencePaper, ReferencePaper.id == CitationRecommendation.reference_id)
+            .join(Claim, Claim.id == CitationRecommendation.claim_id)
+            .where(Claim.draft_id == draft.id, CitationRecommendation.rank == 1)
+            .order_by(CitationRecommendation.score_percentage.desc())
+        )
+    ).all()
+
+    settings = get_settings()
+    results: list[BestReferenceRead] = []
+    seen_reference_ids: set[uuid.UUID] = set()
+    for recommendation, reference, claim in rows:
+        if reference.id in seen_reference_ids:
+            continue
+        seen_reference_ids.add(reference.id)
+
+        score = recommendation.score_percentage
+        results.append(
+            BestReferenceRead(
+                recommendation=_serialize(recommendation, reference),
+                claim=BestReferenceClaim.model_validate(claim),
+                reference=ReferenceDetail.model_validate(reference),
+                meets_threshold=score >= settings.best_reference_min_score,
+                is_recommended=score >= settings.best_reference_recommended_score,
+                min_score_threshold=settings.best_reference_min_score,
+                recommended_score_threshold=settings.best_reference_recommended_score,
+            )
+        )
+        if len(results) >= limit:
+            break
+
+    return results
+
+
 @router.get("/drafts/{draft_id}/accepted-citations", response_model=dict[uuid.UUID, str])
 async def accepted_citations_for_draft(draft: DraftDep, session: SessionDep) -> dict[uuid.UUID, str]:
     """claim_id -> the joined citation text ghost text should render, e.g.

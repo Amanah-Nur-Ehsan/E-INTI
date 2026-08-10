@@ -134,6 +134,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/missing-abstracts-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Missing Abstracts Template
+         * @description xlsx of every reference missing an abstract for `year` (omit the
+         *     query param for the "unknown year" bucket) -- the header row matches
+         *     what /library/import already recognizes, so filling in ABSTRACT and
+         *     re-uploading the same file backfills just that field via the normal
+         *     duplicate-match path, no separate mechanism needed.
+         */
+        get: operations["missing_abstracts_template_api_v1_library_missing_abstracts_template_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library": {
         parameters: {
             query?: never;
@@ -278,6 +302,36 @@ export interface paths {
          *     is good enough yet," so the caller gets the number and decides.
          */
         get: operations["best_reference_for_draft_api_v1_drafts__draft_id__best_reference_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drafts/{draft_id}/best-references": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Best References For Draft
+         * @description The N best references for this paper as a whole -- a ranked
+         *     shortlist rather than the single pick /best-reference returns, for
+         *     "which references should I actually cite" instead of "give me one."
+         *
+         *     Mirrors /best-reference's query and threshold logic exactly, just
+         *     without the .limit(1): every claim's rank=1 recommendation, ordered by
+         *     score. The same reference can legitimately be the strongest match for
+         *     more than one claim, so rows are deduped by reference_id (keeping each
+         *     reference's highest-scoring claim, since the ordering already put that
+         *     one first) before truncating to `limit` -- otherwise a paper with one
+         *     dominant reference could fill the whole shortlist with itself.
+         */
+        get: operations["best_references_for_draft_api_v1_drafts__draft_id__best_references_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1178,6 +1232,37 @@ export interface operations {
             };
         };
     };
+    missing_abstracts_template_api_v1_library_missing_abstracts_template_get: {
+        parameters: {
+            query?: {
+                year?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_references_api_v1_library_get: {
         parameters: {
             query?: {
@@ -1427,6 +1512,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BestReferenceRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    best_references_for_draft_api_v1_drafts__draft_id__best_references_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BestReferenceRead"][];
                 };
             };
             /** @description Validation Error */
