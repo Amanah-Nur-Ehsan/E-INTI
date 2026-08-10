@@ -26,6 +26,14 @@ from dataclasses import dataclass
 _SURNAME_FIRST = re.compile(r"^([^,]+),\s*(.+)$")
 #: "F. M. Surname" or "Firstname Middle Surname" — Semantic Scholar's shape.
 _GIVEN_FIRST_INITIALS = re.compile(r"^((?:[A-Z]\.\s*)+)\s*([A-Za-z\-']+)$")
+#: A single whitespace-free token that is itself already an initials group,
+#: e.g. "D.", "J.H.", "S.S." -- used to detect "Surname(s) Initials" with no
+#: comma, common for multi-word (Iberian/Portuguese-style) family names in
+#: Scopus exports, e.g. "Zegarra Rodríguez D." (family "Zegarra Rodríguez",
+#: initial "D."). Requires the trailing period so a genuine short surname
+#: like "Wu" in "Wei Wu" (given-name-first order) is never misread as
+#: initials.
+_TRAILING_INITIALS_TOKEN = re.compile(r"^(?:[A-Za-z]\.){1,4}$")
 
 MAX_ENTRY_AUTHORS = 20
 ENTRY_ELLIPSIS_KEEP_FIRST = 19
@@ -68,10 +76,20 @@ def parse_author_name(raw: str | None) -> AuthorName | None:
     parts = text.split()
     if len(parts) == 1:
         return AuthorName(family=parts[0])
-    # "Jane A. Smith" / "Jane Smith" — assume the last token is the family
-    # name and everything before it is given name(s) to initialize.
-    family = parts[-1]
-    given = " ".join(parts[:-1])
+
+    if _TRAILING_INITIALS_TOKEN.match(parts[-1]):
+        # "Zegarra Rodríguez D." / "Kleinschmidt J.H." — family name(s)
+        # first, trailing initials, no comma. The last token is already
+        # initials-shaped, so everything before it is the (possibly
+        # multi-word) family name, not a given name to initialize.
+        family = " ".join(parts[:-1])
+        given = parts[-1]
+    else:
+        # "Jane A. Smith" / "Jane Smith" — natural given-name-first order:
+        # the last token is the family name and everything before it is
+        # given name(s) to initialize.
+        family = parts[-1]
+        given = " ".join(parts[:-1])
     return AuthorName(family=family, given_initials=_to_initials(given))
 
 

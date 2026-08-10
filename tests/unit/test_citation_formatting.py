@@ -41,6 +41,20 @@ class FakeRef:
         ("J. A. Smith", "Smith", "J. A."),
         ("Smith", "Smith", ""),
         ("van der Berg, P.", "van der Berg", "P."),
+        # "Surname(s) Initials", no comma -- common for multi-word
+        # (Iberian/Portuguese-style) family names in Scopus exports.
+        # Observed live: these were misparsed as given-name-first, putting
+        # the real family name where initials belong and vice versa
+        # (e.g. IEEE rendered "Z. R. G. D." instead of "D. Zegarra Rodríguez").
+        ("Zegarra Rodríguez D.", "Zegarra Rodríguez", "D."),
+        ("Daniel Okey O.", "Daniel Okey", "O."),
+        ("Maidin S.S.", "Maidin", "S. S."),
+        ("Umoren Udo E.", "Umoren Udo", "E."),
+        ("Kleinschmidt J.H.", "Kleinschmidt", "J. H."),
+        # Still correctly given-name-first when the last token isn't
+        # initials-shaped (no trailing period) -- a short real surname
+        # like "Wu" must not be misread as an initials group.
+        ("Wei Wu", "Wu", "W."),
     ],
 )
 def test_parse_author_name_shapes(raw, expected_family, expected_initials):
