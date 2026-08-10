@@ -55,7 +55,7 @@ class MockLLMClient:
     def complete_structured(self, *, tier: Tier, system: str, user: str, schema: type[BaseModel]):
         self.calls[tier] = self.calls.get(tier, 0) + 1
         from app.services.paragraph_rewrite_service import ParagraphRewrite
-        from app.services.sdg_classification_service import SDGPick
+        from app.services.sdg_classification_service import SDGKeywordPick, SDGPick
 
         # SDG classification and paragraph rewriting also run at
         # Tier.CLASSIFY (same cheap model tier as claim classification) but
@@ -63,6 +63,8 @@ class MockLLMClient:
         # tier alone.
         if schema is SDGPick:
             return self._classify_sdg(user, schema)
+        if schema is SDGKeywordPick:
+            return self._pick_sdg_keyword(user, schema)
         if schema is ParagraphRewrite:
             return self._rewrite_paragraph(user, schema)
         if tier is Tier.CLASSIFY:
@@ -129,6 +131,13 @@ class MockLLMClient:
         return schema.model_validate(
             {"fits": True, "goal_number": goal_number, "keyword": keyword, "reason": reason}
         )
+
+    def _pick_sdg_keyword(self, user: str, schema: type[BaseModel]):
+        """Deterministic stand-in for the keyword-only follow-up call: pick
+        the first keyword in the full list handed to it.
+        """
+        keywords = re.findall(r"^- (.+)$", user, re.MULTILINE)
+        return schema.model_validate({"keyword": keywords[0] if keywords else "mock keyword"})
 
     def _rewrite_paragraph(self, user: str, schema: type[BaseModel]):
         """Deterministic stand-in: append the citation right after the

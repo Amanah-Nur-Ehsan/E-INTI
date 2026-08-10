@@ -138,6 +138,69 @@ class SDGPick(BaseModel):
     reason: str = ""
 
 
+class SDGKeywordPick(BaseModel):
+    keyword: str
+
+
+_KEYWORD_ONLY_SYSTEM = (
+    "You are given one confirmed UN Sustainable Development Goal and the "
+    "complete list of keyword phrases in its official group, from the file "
+    "'SDG Goals Keywords as of 2026'. None of these phrases happened to "
+    "appear verbatim in the paper's text, but the paper has already been "
+    "judged to genuinely belong to this SDG. Select the single keyword from "
+    "the list that best represents the paper's actual topic, contribution, "
+    "or outcome. Reproduce it exactly as supplied, including punctuation, "
+    "capitalization, hyphens, and asterisks. Return JSON only, with exactly "
+    "one key: keyword."
+)
+
+_KEYWORD_ONLY_TEMPLATE = """Paper text (excerpt):
+{text}
+
+Confirmed goal: {goal_number}: {goal_name}
+
+Full keyword list for this goal:
+{keywords}
+
+Return the single keyword from the list above that best fits this paper."""
+
+
+def _pick_keyword_from_full_group(client, text: str, goal_number: int, goal_name: str) -> str | None:
+    """Only called when a confirmed goal had zero lexically-matched
+    keywords -- the paper is genuinely about this SDG, but none of its
+    keyword phrases happen to appear verbatim in the text (e.g. a paper
+    about "auscultation" and "clinical decision support" matching SDG 3
+    without ever writing "human health" or "cardiovascular disease"). One
+    extra keyword-only call, scoped to this one goal's full list (up to
+    ~100 phrases, a few hundred tokens) rather than the ~1,600 across all
+    17 -- cheap because it only runs in this one-goal, empty-match case.
+    """
+    full_list = next((g.keywords for g in load_sdg_goals() if g.number == goal_number), ())
+    if not full_list:
+        return None
+
+    user = _KEYWORD_ONLY_TEMPLATE.format(
+        text=text[:MAX_CLASSIFY_CHARS],
+        goal_number=goal_number,
+        goal_name=goal_name,
+        keywords="\n".join(f"- {k}" for k in full_list),
+    )
+    try:
+        pick = client.complete_structured(
+            tier=Tier.CLASSIFY, system=_KEYWORD_ONLY_SYSTEM, user=user, schema=SDGKeywordPick
+        )
+    except Exception:
+        log.warning("sdg_keyword_followup_failed", goal_number=goal_number)
+        return None
+
+    if pick.keyword in full_list and pick.keyword.strip().lower() != goal_name.strip().lower():
+        return pick.keyword
+    # Model picked outside the list, or echoed the goal name again --
+    # fall back to the list's first entry rather than storing nothing for
+    # a goal we've already confirmed the paper genuinely belongs to.
+    return full_list[0]
+
+
 def _format_candidates(candidates: list[GoalMatch]) -> str:
     lines = []
     for c in candidates:
@@ -269,6 +332,12 @@ def classify_draft(session: Session, draft: Draft) -> dict:
             "reason": "no_match",
             "sdg_rationale": reason,
         }
+
+    if keyword is None:
+        # Confirmed SDG, but nothing in its keyword list was ever found
+        # verbatim in the text -- ask for a keyword from that one goal's
+        # full list instead of leaving the paper with no keyword at all.
+        keyword = _pick_keyword_from_full_group(client, text, match.number, match.name)
 
     draft.sdg_number = match.number
     draft.sdg_name = match.name

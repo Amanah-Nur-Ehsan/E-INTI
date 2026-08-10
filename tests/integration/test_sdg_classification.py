@@ -269,4 +269,59 @@ def test_keyword_never_equals_the_goal_name(db_session, monkeypatch):
     assert result["classified"] is True
     assert result["sdg_number"] == 3
     assert result["sdg_keyword"] != "Good health and well-being"
-    assert result["sdg_keyword"] is None
+    # The name-equality guard clears the bad value, then the keyword-only
+    # follow-up call fills in a real phrase from SDG 3's full list instead
+    # of leaving the paper with no keyword at all.
+    goal_3 = next(g for g in svc.load_sdg_goals() if g.number == 3)
+    assert result["sdg_keyword"] in goal_3.keywords
+
+
+def test_a_genuinely_matched_goal_with_no_lexical_keyword_still_gets_a_real_one(db_session, monkeypatch):
+    """Observed live: a paper about "auscultation" and "clinical decision
+    support" was correctly classified SDG 3, but none of SDG 3's 99
+    keyword phrases (e.g. "cardiovascular disease", "human health*")
+    happen to appear verbatim in that text, so the paper came back with
+    no keyword at all -- an SDG confirmed but nothing to show or write
+    into the Keywords line. Confirmed with the user: once a goal is
+    genuinely confirmed, let the model choose a keyword from that goal's
+    full list even without a literal text match, rather than leaving the
+    field empty.
+    """
+    from app.services import sdg_classification_service as svc
+
+    draft = _make_draft(
+        db_session, "Explainable AI for auscultation and clinical decision support."
+    )
+    # The main classification call reports fits=True for SDG 3 but with no
+    # matched_keywords -- exactly the bare-name-candidate shape, since the
+    # prefilter found zero literal hits for this text.
+    main_pick = {
+        "fits": True,
+        "goal_number": 3,
+        "keyword": None,
+        "reason": "The paper concerns clinical health monitoring.",
+    }
+    # The keyword-only follow-up call gets the full SDG 3 list and picks a
+    # real phrase from it.
+    followup_pick = {"keyword": "public health"}
+    calls: list[dict] = [main_pick, followup_pick]
+
+    class _SequencedFakeClient:
+        def complete_structured(self, *, tier, system, user, schema):
+            return schema.model_validate(calls.pop(0))
+
+    monkeypatch.setattr(svc, "get_llm_client", lambda: _SequencedFakeClient())
+    monkeypatch.setattr(
+        svc,
+        "prefilter",
+        lambda text, top_n=17: [
+            svc.GoalMatch(number=3, name="Good health and well-being", matched_keywords=())
+        ],
+    )
+
+    result = svc.classify_draft(db_session, draft)
+
+    assert result["classified"] is True
+    assert result["sdg_number"] == 3
+    assert result["sdg_name"] == "Good health and well-being"
+    assert result["sdg_keyword"] == "public health"
