@@ -103,7 +103,12 @@ class MockLLMClient:
         match = re.search(r"^(\d+): (.+?) -- (.*)$", user, re.MULTILINE)
         if not match:
             return schema.model_validate(
-                {"goal_number": 1, "keyword": None, "reason": "Mock fallback: no candidates parsed."}
+                {
+                    "fits": True,
+                    "goal_number": 1,
+                    "keyword": None,
+                    "reason": "Mock fallback: no candidates parsed.",
+                }
             )
 
         goal_number = int(match.group(1))
@@ -117,8 +122,12 @@ class MockLLMClient:
             if keyword
             else f"Mock: {goal_name} ranked highest with no keyword match."
         )
+        # Deterministic mock always reports a fit -- the fits=False path is
+        # exercised with a purpose-built fake client in unit tests instead,
+        # since "does this genuinely fit" is a judgement call the regex
+        # stand-in has no basis to make.
         return schema.model_validate(
-            {"goal_number": goal_number, "keyword": keyword, "reason": reason}
+            {"fits": True, "goal_number": goal_number, "keyword": keyword, "reason": reason}
         )
 
     def _rewrite_paragraph(self, user: str, schema: type[BaseModel]):
