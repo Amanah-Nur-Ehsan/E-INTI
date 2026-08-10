@@ -14,6 +14,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from docx.enum.text import WD_COLOR_INDEX
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
@@ -120,14 +121,26 @@ def _set_text(run_el, text: str) -> None:
     run_el.append(t)
 
 
-def clone_run_formatting(source_run_el, text: str):
+def clone_run_formatting(source_run_el, text: str, *, highlight: bool = False):
     """A new `<w:r>` carrying a deep copy of the source run's `<w:rPr>` —
     bold, italic, font, and colour all travel with it.
+
+    `highlight=True` marks the run yellow so an INTI addition stays
+    identifiable even after the author runs *Accept All Changes* and the
+    tracked-change markup (which this survives independently of) is gone.
+    Goes through `get_or_add_highlight()` rather than a bare
+    `rpr.append(...)`: `w:highlight` has a required position within
+    `CT_RPr`'s element sequence, and appending blindly onto a rich,
+    deep-copied `rPr` can produce an ordering Word tolerates but a strict
+    OOXML validator won't.
     """
     new_run = OxmlElement("w:r")
     rpr = source_run_el.find(qn("w:rPr"))
-    if rpr is not None:
-        new_run.append(deepcopy(rpr))
+    rpr = deepcopy(rpr) if rpr is not None else OxmlElement("w:rPr")
+    if highlight:
+        rpr.get_or_add_highlight().val = WD_COLOR_INDEX.YELLOW
+    if len(rpr) or rpr.attrib:
+        new_run.append(rpr)
     _set_text(new_run, text)
     return new_run
 

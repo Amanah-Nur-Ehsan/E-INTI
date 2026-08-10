@@ -8,6 +8,7 @@ text already wrapped in `<w:ins>`, which would corrupt validation against
 a document that already carries tracked changes.
 """
 
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -15,6 +16,7 @@ from io import BytesIO
 from typing import Literal
 
 from docx import Document
+from docx.enum.text import WD_COLOR_INDEX
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches
@@ -30,6 +32,14 @@ from app.services.export.docx_ops import (
     resolve_insertion_point,
     wrap_tracked_insert,
 )
+
+#: Same pattern as claim_detection_service.py's _INTRO_HEADING -- kept as an
+#: independent copy rather than a shared import, since this module reasons
+#: about export-time paragraph objects while that one reasons about
+#: parsed-content dicts, and the two have no other reason to depend on each
+#: other.
+_INTRO_HEADING = re.compile(r"^\s*(?:\d+[.)]?\s*|[ivxlcdm]+[.)]\s*)?introduction\b", re.IGNORECASE)
+_KEYWORDS_LINE = re.compile(r"^\s*(?:key\s*words?|kata\s*kunci)\s*[:\-]?", re.IGNORECASE)
 
 InsertionOutcomeStatus = Literal[
     "INSERTED", "POSITION_MISMATCH", "NO_BLOCK", "EMPTY_CITATION"
@@ -52,10 +62,15 @@ def _blocks_by_paragraph_index(bundle: ExportBundle) -> dict[int, object]:
 
 
 def _build_citation_node(source_run_el, text: str, mode: str):
-    """The element to splice in, varying only by insertion mode."""
+    """The element to splice in, varying only by insertion mode.
+
+    Always yellow-highlighted: an inserted citation should stay visibly
+    identifiable as an INTI addition even after tracked changes are
+    accepted and the `<w:ins>` markup is gone.
+    """
     if mode == InsertionMode.PLACEHOLDER:
-        return clone_run_formatting(source_run_el, f" [CITATION: {text}]")
-    return clone_run_formatting(source_run_el, f" {text}")
+        return clone_run_formatting(source_run_el, f" [CITATION: {text}]", highlight=True)
+    return clone_run_formatting(source_run_el, f" {text}", highlight=True)
 
 
 def write_docx(
@@ -178,6 +193,15 @@ def write_docx(
     revision_counter = _append_bibliography(
         document, bundle, mode=mode, author=author, when=when, revision_counter=revision_counter
     )
+    revision_counter = _append_sdg_keyword(
+        document,
+        bundle,
+        flat_paragraphs,
+        mode=mode,
+        author=author,
+        when=when,
+        revision_counter=revision_counter,
+    )
     if include_audit_report:
         _append_audit_table(document, bundle)
 
@@ -256,6 +280,9 @@ def _append_bibliography(
         for segment in segments:
             run = paragraph.add_run(segment.text)
             run.italic = segment.italic
+            # Highlighted like every other INTI addition -- see
+            # _build_citation_node's docstring for why yellow specifically.
+            run.font.highlight_color = WD_COLOR_INDEX.YELLOW
 
         if mode == InsertionMode.TRACKED_CHANGES:
             revision_counter += 1
@@ -263,6 +290,72 @@ def _append_bibliography(
                 paragraph, author=author, when=when, revision_id=revision_counter
             )
 
+    return revision_counter
+
+
+def _append_sdg_keyword(
+    document,
+    bundle: ExportBundle,
+    flat_paragraphs: list,
+    *,
+    mode: str,
+    author: str,
+    when: datetime,
+    revision_counter: int,
+) -> int:
+    """Adds the classified SDG keyword to the paper's Keywords line,
+    highlighted like every other INTI addition.
+
+    A no-op when the classifier declined (`sdg_number` null -- see
+    `sdg_classification_service.classify_draft`'s `fits` field) or somehow
+    has a goal with no matched keyword: nothing genuine to add, so nothing
+    is written.
+    """
+    keyword = bundle.draft.sdg_keyword
+    if not keyword or not bundle.draft.sdg_number:
+        return revision_counter
+
+    keywords_block = next((b for b in bundle.blocks if _KEYWORDS_LINE.match(b.text)), None)
+
+    if keywords_block is not None and keywords_block.paragraph_index < len(flat_paragraphs):
+        paragraph = flat_paragraphs[keywords_block.paragraph_index]
+        run_elements = paragraph._p.xpath(".//w:r[not(ancestor::w:del)]")
+        source_el = run_elements[-1] if run_elements else None
+        new_run = (
+            clone_run_formatting(source_el, f"; {keyword}", highlight=True)
+            if source_el is not None
+            else clone_run_formatting(OxmlElement("w:r"), f"; {keyword}", highlight=True)
+        )
+        node = new_run
+        if mode == InsertionMode.TRACKED_CHANGES:
+            revision_counter += 1
+            node = wrap_tracked_insert(new_run, author=author, when=when, revision_id=revision_counter)
+        paragraph._p.append(node)
+        return revision_counter
+
+    # No existing Keywords line: add one right before the Introduction
+    # heading (the same cut point claim detection uses to skip the
+    # abstract), so it lands with the rest of the front matter rather than
+    # mid-body. Falls back to the very top of the document if there's no
+    # Introduction heading either.
+    intro_block = next(
+        (b for b in bundle.blocks if b.is_heading and _INTRO_HEADING.match(b.text)), None
+    )
+    if not flat_paragraphs:
+        return revision_counter
+    anchor_index = intro_block.paragraph_index if intro_block is not None else 0
+    if anchor_index >= len(flat_paragraphs):
+        return revision_counter
+    anchor_paragraph = flat_paragraphs[anchor_index]
+
+    new_paragraph = anchor_paragraph.insert_paragraph_before()
+    run = new_paragraph.add_run(f"Keywords: {keyword}")
+    run.font.highlight_color = WD_COLOR_INDEX.YELLOW
+    if mode == InsertionMode.TRACKED_CHANGES:
+        revision_counter += 1
+        _wrap_paragraph_runs_as_tracked(
+            new_paragraph, author=author, when=when, revision_id=revision_counter
+        )
     return revision_counter
 
 
