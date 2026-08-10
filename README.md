@@ -146,6 +146,31 @@ only had `API_ORIGIN` set at `docker run` time (correctly, verified with
 default and failed with `ECONNREFUSED 127.0.0.1:8000` — this was a real
 bug shipped and caught live on an actual deploy, not a hypothetical.
 
+`worker` runs `--pool=threads --concurrency=2` (not `--pool=solo`, unlike
+`make dev`'s local Mac worker): threads share one process, so there's one
+copy of SPECTER2 + the cross-encoder in memory rather than two, and it puts
+`app/core/device.py`'s CPU-limiting semaphore in the same process as the
+models it serializes. Two concurrent analyses' Tier-1/Tier-2 LLM calls also
+run in a per-analysis thread pool (`settings.llm_max_concurrency`) rather
+than one call at a time — the actual wall-clock win, since almost all of a
+draft's runtime used to be the *sum* of every LLM call's latency.
+
+Local-model CPU is capped independently of that concurrency, for shared
+boxes running other services alongside this one:
+`settings.torch_num_threads` (default 1) bounds torch's own thread count,
+and `device.local_inference()` is a process-wide semaphore held per *batch*
+(not per whole-draft call) so two analyses' embedding/reranking never run
+at the same instant — peak local-model CPU stays near `torch_num_threads`
+cores regardless of how many analyses are queued. Raise it if the box has
+CPU to spare; the tradeoff is faster embedding/reranking for a higher peak.
+
+`settings.retrieve_claim_limit` (default 40, `0` = uncapped) is a separate,
+larger lever: it caps how many of a draft's claims enter retrieval
+(embedding + reranking) at all, picked by `Claim.claim_confidence` — a real
+paper can have ~137 citation-worthy claims and only ever surface a 5-item
+shortlist, so retrieval used to spend ~137 embeddings and ~1,370
+cross-encoder pairs to use maybe 20 of them.
+
 Everything under this profile stays off `make dev`'s path entirely — a plain
 `docker compose up -d postgres redis` (what `make dev` runs) never touches
 `migrate`/`api`/`worker`/`web`, so the two workflows can't collide.

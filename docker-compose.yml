@@ -80,6 +80,11 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://dev:dev@postgres:5432/citation_db
       REDIS_URL: redis://:${REDIS_PASSWORD:-devredispass}@redis:6379/0
+      # Belt-and-braces alongside torch.set_num_threads() in device.py --
+      # OpenMP/MKL read these at import time, before a settings lookup or
+      # torch.set_num_threads() could run.
+      OMP_NUM_THREADS: ${TORCH_NUM_THREADS:-1}
+      MKL_NUM_THREADS: ${TORCH_NUM_THREADS:-1}
     volumes:
       - uploads_data:/app/uploads
     depends_on:
@@ -87,7 +92,15 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-    command: celery -A app.workers.celery_app worker --loglevel=info --pool=solo
+    # threads, not prefork: one process means one shared copy of SPECTER2 +
+    # the cross-encoder (~1.5GB) rather than one per worker process, and it
+    # puts device.py's CPU-limiting semaphore in the same process as the
+    # models it's meant to serialize. The bottleneck two concurrent
+    # analyses spend most of their time on is waiting on the LLM over the
+    # network, which releases the GIL -- threads lose nothing there.
+    # --concurrency here is the actual value; settings.celery_concurrency
+    # just mirrors it for app code to reason about the CPU budget by.
+    command: celery -A app.workers.celery_app worker --loglevel=info --pool=threads --concurrency=2
 
   web:
     profiles: ["full"]

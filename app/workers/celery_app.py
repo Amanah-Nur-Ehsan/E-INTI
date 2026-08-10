@@ -25,8 +25,18 @@ celery_app.conf.update(
     result_serializer="json",
     accept_content=["json"],
     task_track_started=True,
+    # worker_max_tasks_per_child is prefork-only and is silently ignored
+    # under --pool=threads (the worker command in docker-compose.yml) --
+    # left here as documentation of a real gap (no leak-driven recycling
+    # under threads), not because it does anything. Restart the worker
+    # periodically instead if that ever becomes a problem in practice.
     worker_max_tasks_per_child=200,
     broker_connection_retry_on_startup=True,
+    # One task claimed per worker slot rather than prefetched ahead --
+    # with --concurrency=2 threads, prefetching would let one slow
+    # analysis hoard a second task's slot before the first is anywhere
+    # near actually running it.
+    worker_prefetch_multiplier=1,
 )
 
 configure_logging()
