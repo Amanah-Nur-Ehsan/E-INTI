@@ -8,18 +8,41 @@ wrong, `build_bundle` + the per-format writers already do all the real
 work, so moving to a task is a one-function change.
 """
 
+import re
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import Export
+from app.db.models import Draft, Export
 from app.db.models.enums import ExportFormat
 from app.services.export.bundle import build_bundle
 from app.services.export.docx_writer import write_docx
 from app.services.export.markdown_writer import write_markdown
 from app.services.export.tabular_writer import write_csv, write_json
+
+#: Characters that are unsafe in a filename across the platforms a
+#: downloaded file might land on -- path separators (both slash styles,
+#: since Windows treats both as significant) plus ASCII control characters.
+_UNSAFE_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+
+
+def _display_filename(original_filename: str | None, extension: str) -> str:
+    """The name a user sees on download: "[INTI] <paper name>.<ext>".
+
+    Deliberately separate from the on-disk storage path (which stays
+    UUID-named, see `run_export`) -- this only feeds the download's
+    Content-Disposition header, so a stray path separator or control
+    character in an uploaded filename can't do anything odd on disk; it's
+    sanitised here purely so it isn't odd in the header either. Takes the
+    extension from the *generated* export, not the source draft -- a .md or
+    .txt draft can still export as .docx.
+    """
+    stem = Path(original_filename or "").stem or "paper"
+    stem = _UNSAFE_FILENAME_CHARS.sub("_", stem).strip() or "paper"
+    return f"[INTI] {stem}.{extension}"
 
 
 class UnsupportedExportError(ValueError):
@@ -121,9 +144,19 @@ def run_export(
     export_id = uuid.uuid4()
     directory = get_settings().upload_dir / "exports" / str(export_id)
     directory.mkdir(parents=True, exist_ok=True)
-    filename = f"export_{export_id}.{generated.extension}"
-    storage_path = directory / filename
+    # The on-disk name stays UUID-based -- this is a storage path, not
+    # something a user ever sees, and staying UUID-only keeps it free of
+    # any path-traversal or filesystem-unsafe characters an uploaded
+    # filename might contain. The display name (Content-Disposition, via
+    # Export.filename) is a separate, sanitised string below.
+    storage_filename = f"export_{export_id}.{generated.extension}"
+    storage_path = directory / storage_filename
     storage_path.write_bytes(generated.content)
+
+    draft = session.get(Draft, draft_id)
+    display_filename = _display_filename(
+        draft.original_filename if draft else None, generated.extension
+    )
 
     export = Export(
         id=export_id,
@@ -133,7 +166,7 @@ def run_export(
         insertion_mode=insertion_mode,
         include_audit_report=include_audit_report,
         storage_path=str(storage_path),
-        filename=filename,
+        filename=display_filename,
         byte_size=len(generated.content),
         inserted_count=generated.inserted_count,
         mismatch_count=generated.mismatch_count,

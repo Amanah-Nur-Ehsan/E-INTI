@@ -36,6 +36,29 @@ async def test_export_and_download_round_trip(client, db_session, seeded_draft, 
     assert len(download.content) == body["byte_size"]
 
 
+async def test_export_filename_is_prefixed_with_the_source_paper_name(client, db_session, seeded_draft):
+    """The download's display name is "[INTI] <paper name>.<ext>", derived
+    from the draft's original filename -- not the UUID-based storage name
+    on disk (see app/services/export/__init__.py's run_export)."""
+    draft_id = await _analyzed_draft(client, db_session, seeded_draft)
+
+    resp = await client.post(f"/api/v1/drafts/{draft_id}/exports", json={"format": "docx"})
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+
+    assert body["filename"].startswith("[INTI] ")
+    assert body["filename"] == "[INTI] sample_draft.docx"
+
+    download = await client.get(f"/api/v1/exports/{body['id']}/download")
+    # Starlette encodes non-ASCII-safe characters (the brackets, the space)
+    # into the UTF-8 filename* form per RFC 5987/6266 rather than the plain
+    # filename= form -- still the same name, just percent-encoded.
+    disposition = download.headers["content-disposition"]
+    assert "filename*=utf-8''" in disposition
+    assert "%5BINTI%5D" in disposition
+    assert "sample_draft.docx" in disposition
+
+
 async def test_docx_export_reports_inserted_count(client, db_session, seeded_draft):
     draft_id = await _analyzed_draft(client, db_session, seeded_draft)
     resp = await client.post(f"/api/v1/drafts/{draft_id}/exports", json={"format": "docx"})
