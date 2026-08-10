@@ -125,7 +125,40 @@ STRUCTURAL_REFERENCE = re.compile(
 )
 NON_CLAIM_SECTIONS = {"references", "acknowledgments", "acknowledgements", "bibliography"}
 
+#: Used only as the *fallback* section-name skip in `detect_and_store_claims`
+#: when no Introduction heading was found at all (so the position-based cut
+#: in `body_start_offset` can't apply) -- kept separate from
+#: `NON_CLAIM_SECTIONS` because that set feeds `prefilter()`, whose SKIP
+#: verdict still lets a sentence through as a persisted Claim if it happens
+#: to contain a citation pattern (see the `if not needs_citation and not
+#: citations` check below). The fallback below excludes fully, via a
+#: `continue` before the record is ever created, so it doesn't inherit that
+#: gap.
+ABSTRACT_LIKE_SECTIONS = {"abstract", "keywords", "key words"}
+
 MIN_TOKENS = 8
+
+# Matches a heading whose text *is* an Introduction heading -- with or
+# without a leading number/roman numeral, e.g. "1. Introduction",
+# "I. Introduction", "INTRODUCTION".
+_INTRO_HEADING = re.compile(r"^\s*(?:\d+[.)]?\s*|[ivxlcdm]+[.)]\s*)?introduction\b", re.IGNORECASE)
+
+
+def body_start_offset(blocks: list[dict]) -> int:
+    """char_start of the first Introduction heading, or 0 if there isn't one.
+
+    Everything before the Introduction (title, authors, abstract, keywords)
+    is the paper summarising its own work, not a place new citations
+    belong -- claims should only be detected from here on. Docx/markdown
+    drafts carry heading blocks (`is_heading=True`); plaintext drafts have
+    none at all (`draft_parser_service.py`'s plaintext path never sets
+    `is_heading`), so "no heading found" is a normal, expected outcome,
+    not an error -- callers fall back to name-based section skipping.
+    """
+    for block in blocks:
+        if block.get("is_heading") and _INTRO_HEADING.match(block.get("text", "")):
+            return block.get("char_start", 0) or 0
+    return 0
 
 
 @dataclass
@@ -346,11 +379,34 @@ def detect_and_store_claims(session: Session, draft_id: uuid.UUID) -> dict:
 
     session.execute(delete(Claim).where(Claim.draft_id == draft_id))
 
+    # Analyse only from the Introduction onward: the abstract summarises the
+    # paper's own work, not a place new citations belong. Prefer a position
+    # cut against the Introduction heading (works for any section naming);
+    # fall back to name-based skipping only when no heading was found at
+    # all (e.g. plaintext drafts, which carry no headings whatsoever). Never
+    # let either exclude the entire draft -- that would silently produce
+    # zero claims, which is worse than analysing text we'd rather not.
+    body_start = body_start_offset(blocks)
+    if body_start and all((s.char_start or 0) < body_start for s in sentences):
+        log.warning("body_start_excludes_everything", draft_id=str(draft_id))
+        body_start = 0
+    if not body_start:
+        log.info("no_introduction_heading_found", draft_id=str(draft_id))
+
     client = get_llm_client()
     to_classify: list[tuple[int, Sentence, str]] = []
     records: dict[int, dict] = {}
 
     for index, sentence in enumerate(sentences):
+        if body_start and (sentence.char_start or 0) < body_start:
+            continue
+        if (
+            not body_start
+            and sentence.section_title
+            and sentence.section_title.strip().lower() in ABSTRACT_LIKE_SECTIONS
+        ):
+            continue
+
         context = local_context(sentences, index)
         record = {
             "sentence": sentence,

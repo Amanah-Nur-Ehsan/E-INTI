@@ -123,3 +123,86 @@ async def test_parallel_batches_still_map_decisions_to_the_right_sentence(
     assert not any("This study uses a quantitative" in t for t in by_text)
     assert not any(t.startswith("The next section describes") for t in by_text)
     assert not any(t.startswith("Table 2 presents") for t in by_text)
+
+
+async def _upload_docx_bytes(client, filename: str, paragraphs: list[tuple[str, str | None]]) -> str:
+    """Build a minimal docx from (text, style_name) pairs and upload it.
+
+    style_name of "Heading 1" or "Title" makes a heading block, matching
+    the same is_heading logic draft_parser_service.py uses for real docx
+    files (docx.py:312-315).
+    """
+    from io import BytesIO
+
+    from docx import Document
+
+    document = Document()
+    for text, style in paragraphs:
+        document.add_paragraph(text, style=style)
+    buffer = BytesIO()
+    document.save(buffer)
+
+    resp = await client.post(
+        "/api/v1/drafts/upload",
+        files={"file": (filename, buffer.getvalue())},
+    )
+    return resp.json()["id"]
+
+
+async def test_abstract_sentence_with_citation_is_not_claimed(client, db_session):
+    """An abstract sentence that contains a citation pattern must still be
+    fully excluded once an Introduction heading exists -- this is the exact
+    case the prefilter-SKIP route would have missed, since prefilter still
+    lets a citation-carrying sentence through as a persisted Claim
+    (claim_detection_service.py's `if not needs_citation and not citations`
+    check). The position-based cut in body_start_offset excludes it outright
+    instead.
+    """
+    draft_id = await _upload_docx_bytes(
+        client,
+        "abstract_paper.docx",
+        [
+            ("A Paper About Fraud Detection", "Title"),
+            ("Abstract", "Heading 1"),
+            (
+                "This work builds on the approach of Smith et al. (2024) to detect fraud.",
+                None,
+            ),
+            ("Introduction", "Heading 1"),
+            (
+                "Machine learning techniques have improved the ability to identify complex "
+                "fraud patterns in financial transactions.",
+                None,
+            ),
+        ],
+    )
+    parse_and_store_draft(db_session, draft_id)
+    detect_and_store_claims(db_session, draft_id)
+
+    claims = (await client.get(f"/api/v1/drafts/{draft_id}/claims")).json()
+    texts = [c["sentence_text"] for c in claims]
+    assert not any("builds on the approach of Smith" in t for t in texts)
+    assert any("Machine learning techniques" in t for t in texts)
+
+
+async def test_abstract_skip_never_excludes_the_whole_draft(client, db_session):
+    """If every sentence's char_start were somehow before the detected
+    Introduction offset (a malformed or oddly-ordered draft), the guard in
+    detect_and_store_claims must fall back to analysing everything rather
+    than silently producing zero claims.
+    """
+    draft_id = await _upload_docx_bytes(
+        client,
+        "intro_only.docx",
+        [
+            ("Introduction", "Heading 1"),
+            (
+                "Prior studies show that blockchain increases transparency in accounting "
+                "processes for financial institutions.",
+                None,
+            ),
+        ],
+    )
+    parse_and_store_draft(db_session, draft_id)
+    counts = detect_and_store_claims(db_session, draft_id)
+    assert counts["claims"] > 0

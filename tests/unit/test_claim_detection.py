@@ -197,3 +197,67 @@ def test_mock_tier1_alignment_preserves_indices():
     by_idx = {d.idx: d for d in result.decisions}
     assert by_idx[0].needs_citation is True
     assert by_idx[1].needs_citation is False
+
+
+# --------------------------------------------------------------------------
+# body_start_offset -- skip abstract/title-page text, analyse from the
+# Introduction onward
+# --------------------------------------------------------------------------
+
+
+def _heading(text: str, char_start: int) -> dict:
+    return {"text": text, "char_start": char_start, "is_heading": True}
+
+
+def _para(text: str, char_start: int) -> dict:
+    return {"text": text, "char_start": char_start, "is_heading": False}
+
+
+def test_body_start_offset_bare_introduction():
+    from app.services.claim_detection_service import body_start_offset
+
+    blocks = [
+        _heading("A Paper Title", 0),
+        _para("Abstract text here.", 20),
+        _heading("Introduction", 50),
+        _para("Body text.", 65),
+    ]
+    assert body_start_offset(blocks) == 50
+
+
+def test_body_start_offset_numbered_introduction():
+    from app.services.claim_detection_service import body_start_offset
+
+    blocks = [_para("Abstract.", 0), _heading("1. Introduction", 20), _para("Body.", 40)]
+    assert body_start_offset(blocks) == 20
+
+
+def test_body_start_offset_roman_numeral_introduction():
+    from app.services.claim_detection_service import body_start_offset
+
+    blocks = [_para("Abstract.", 0), _heading("I. Introduction", 15), _para("Body.", 35)]
+    assert body_start_offset(blocks) == 15
+
+
+def test_body_start_offset_no_heading_at_all_returns_zero():
+    from app.services.claim_detection_service import body_start_offset
+
+    blocks = [_para("Abstract.", 0), _para("Body.", 20)]
+    assert body_start_offset(blocks) == 0
+
+
+def test_body_start_offset_headings_but_no_introduction_returns_zero():
+    from app.services.claim_detection_service import body_start_offset
+
+    blocks = [_heading("Abstract", 0), _para("...", 10), _heading("Background", 30)]
+    assert body_start_offset(blocks) == 0
+
+
+def test_body_start_offset_introduction_only_after_body_still_found():
+    """Even an oddly-ordered draft still finds the heading wherever it is --
+    the caller, not this function, is responsible for guarding against a
+    cut that would exclude the whole document."""
+    from app.services.claim_detection_service import body_start_offset
+
+    blocks = [_para("Some body text first.", 0), _heading("Introduction", 25)]
+    assert body_start_offset(blocks) == 25
