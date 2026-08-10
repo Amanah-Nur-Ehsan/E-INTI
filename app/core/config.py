@@ -121,6 +121,23 @@ class Settings(BaseSettings):
     #: budget above can be reasoned about in one place.
     celery_concurrency: int = 2
 
+    # library.refresh (enrich + embed the shared reference library) must
+    # never compete with an in-flight paper analysis for the same two
+    # thread slots -- so it processes the pending backlog in small chunks,
+    # checking before each one whether any analysis is running at all, and
+    # backing off untouched if so. See app/workers/tasks/refresh_library.py.
+    #: Rows enriched/embedded per chunk. Small enough that a chunk already
+    #: running when a paper is uploaded blocks it only briefly, not for the
+    #: whole backlog.
+    library_chunk_size: int = 25
+    #: How long to wait before checking again when an analysis is running
+    #: (or already mid-chunk) rather than immediately fighting it for CPU.
+    library_idle_retry_seconds: int = 300
+    #: How often the idle-time scheduler fires a check on its own, when
+    #: nobody has explicitly hit POST /library/refresh -- the "start
+    #: enrichment automatically once the system is idle" behaviour.
+    library_beat_interval_seconds: int = 600
+
     # "Which single reference should this paper cite" thresholds. Below
     # min_score the match is too weak to present as usable; at or above
     # recommended_score it's shown as the preferred choice rather than

@@ -37,6 +37,19 @@ celery_app.conf.update(
     # analysis hoard a second task's slot before the first is anywhere
     # near actually running it.
     worker_prefetch_multiplier=1,
+    # "Start enrichment automatically once the system is idle": a plain
+    # interval (seconds) is enough here -- library.refresh itself checks
+    # for an in-flight analysis and no-ops/reschedules if one exists (see
+    # app/workers/tasks/refresh_library.py), so a missed or overlapping
+    # tick is harmless. Only meaningful when the worker is started with
+    # --beat (docker-compose.yml's worker command); a plain `celery worker`
+    # without --beat simply never fires it, which is fine for local dev.
+    beat_schedule={
+        "library-refresh-idle-check": {
+            "task": "library.refresh",
+            "schedule": settings.library_beat_interval_seconds,
+        },
+    },
 )
 
 configure_logging()

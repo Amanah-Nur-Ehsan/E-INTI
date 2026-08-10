@@ -177,7 +177,7 @@ def claim_embedding_text(claim_text: str, context: str | None = None) -> str:
     return context.strip() if context and context.strip() else claim_text
 
 
-def embed_pending_references(session: Session) -> dict:
+def embed_pending_references(session: Session, limit: int | None = None) -> dict:
     """Embed library references whose embedded text has changed.
 
     The content hash covers title + abstract + keywords, so enrichment
@@ -185,6 +185,12 @@ def embed_pending_references(session: Session) -> dict:
     on the library's own schedule (POST /library/refresh), same as
     enrichment -- embedding cost belongs to the paper, not to whichever
     draft happens to cite it.
+
+    `limit`, like `enrich_pending_references`'s, caps the candidate query
+    -- not the count of rows that actually end up re-embedded, since some
+    candidates in that page turn out to already have a matching hash and
+    are skipped. This is what lets `refresh_library` process the library in
+    small chunks instead of one long run that blocks an incoming analysis.
 
     Selects specific columns rather than full ORM entities so a run over
     the whole library doesn't pull every row's 768-float vector just to
@@ -197,7 +203,7 @@ def embed_pending_references(session: Session) -> dict:
         select(func.count()).select_from(ReferencePaper).where(ReferencePaper.abstract.is_(None))
     ).scalar_one()
 
-    rows = session.execute(
+    query = (
         select(
             ReferencePaper.id,
             ReferencePaper.title,
@@ -209,7 +215,10 @@ def embed_pending_references(session: Session) -> dict:
         )
         .where(ReferencePaper.abstract.isnot(None))
         .order_by(ReferencePaper.created_at)
-    ).all()
+    )
+    if limit is not None:
+        query = query.limit(limit)
+    rows = session.execute(query).all()
     if not rows:
         return counts
 

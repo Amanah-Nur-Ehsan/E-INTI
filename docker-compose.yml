@@ -100,7 +100,15 @@ services:
     # network, which releases the GIL -- threads lose nothing there.
     # --concurrency here is the actual value; settings.celery_concurrency
     # just mirrors it for app code to reason about the CPU budget by.
-    command: celery -A app.workers.celery_app worker --loglevel=info --pool=threads --concurrency=2
+    #
+    # --beat embeds the scheduler in this same process rather than running
+    # a separate beat container. Normally discouraged with multiple
+    # workers (each would run its own beat and double-fire schedules) --
+    # safe here because there is exactly one worker. It only ever fires
+    # library.refresh, which is itself idle-checking and self-rescheduling
+    # (see app/workers/tasks/refresh_library.py), so a missed or delayed
+    # tick costs nothing beyond a later enrichment pass.
+    command: celery -A app.workers.celery_app worker --loglevel=info --pool=threads --concurrency=2 --beat --schedule=/tmp/celerybeat-schedule
 
   web:
     profiles: ["full"]

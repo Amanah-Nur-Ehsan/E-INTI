@@ -171,6 +171,26 @@ paper can have ~137 citation-worthy claims and only ever surface a 5-item
 shortlist, so retrieval used to spend ~137 embeddings and ~1,370
 cross-encoder pairs to use maybe 20 of them.
 
+The `worker` command also passes `--beat --schedule=/tmp/celerybeat-schedule`,
+embedding Celery's scheduler in the same process rather than a separate
+container (safe only because there is exactly one worker — normally
+discouraged with more than one, since each would fire the schedule
+independently). It fires `library.refresh` every
+`settings.library_beat_interval_seconds` (default 600s), which is how
+enrichment/embedding of the shared reference library starts automatically
+once the system is idle rather than needing a manual `POST
+/library/refresh`. That task never competes with an in-flight analysis for
+the worker's two thread slots: each tick checks for any `PENDING`/`RUNNING`
+`AnalysisRun` first and, if one exists, does no work and reschedules itself
+after `settings.library_idle_retry_seconds` instead — Celery/Redis have no
+task-preemption primitive, so priority here means "refuse to start", not
+"interrupt what's running". When idle, it processes at most
+`settings.library_chunk_size` (default 25) rows per tick and re-queues
+itself immediately if that chunk came back full, so a large backlog is
+drained in short bursts rather than one long run that would itself block
+the next paper upload. A short Redis lock (`library_refresh_lock`) guards
+against two ticks overlapping.
+
 Everything under this profile stays off `make dev`'s path entirely — a plain
 `docker compose up -d postgres redis` (what `make dev` runs) never touches
 `migrate`/`api`/`worker`/`web`, so the two workflows can't collide.
