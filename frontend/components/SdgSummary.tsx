@@ -48,10 +48,7 @@ export function SdgSummary({
             </span>
           )}
         </div>
-        <p className="mt-1 flex items-start gap-1 text-xs text-muted-foreground">
-          <span>{sdgRationale}</span>
-          <CopyButton text={sdgRationale} />
-        </p>
+        <p className="mt-1 text-xs text-muted-foreground">{sdgRationale}</p>
       </Card>
     );
   }
@@ -62,12 +59,7 @@ export function SdgSummary({
         <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-200">
           SDG {sdgNumber}
         </Badge>
-        {sdgName && (
-          <span className="flex items-center gap-1 text-foreground">
-            {sdgName}
-            <CopyButton text={sdgName} />
-          </span>
-        )}
+        <span className="text-foreground">{sdgName}</span>
         {sdgKeyword && (
           <span className="flex items-center gap-1 text-muted-foreground">
             · {sdgKeyword}
@@ -75,12 +67,7 @@ export function SdgSummary({
           </span>
         )}
       </div>
-      {sdgRationale && (
-        <p className="mt-1 flex items-start gap-1 text-xs text-muted-foreground">
-          <span>{sdgRationale}</span>
-          <CopyButton text={sdgRationale} />
-        </p>
-      )}
+      {sdgRationale && <p className="mt-1 text-xs text-muted-foreground">{sdgRationale}</p>}
     </Card>
   );
 }
