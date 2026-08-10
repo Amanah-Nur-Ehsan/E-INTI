@@ -96,3 +96,30 @@ async def test_needs_citation_filter(client, db_session, parsed_draft):
     ).json()
     assert filtered
     assert all(c["needs_citation"] for c in filtered)
+
+
+async def test_parallel_batches_still_map_decisions_to_the_right_sentence(
+    client, db_session, parsed_draft, monkeypatch, settings
+):
+    """Tier-1 batches now run in a thread pool. Forcing batch_size=1 turns
+    every uncached sentence into its own concurrently-run batch -- the
+    worst case for index misalignment, since every batch races every other
+    one. Results must still land on the correct sentence, identical to the
+    known-correct outcome test_detection_produces_expected_claim_set
+    asserts for the default (serial-in-practice, one batch) case.
+    """
+    monkeypatch.setattr(settings, "classify_batch_size", 1)
+
+    counts = detect_and_store_claims(db_session, parsed_draft)
+    assert counts["llm_calls"] > 1, "test needs multiple concurrent batches to be meaningful"
+
+    claims = (await client.get(f"/api/v1/drafts/{parsed_draft}/claims")).json()
+    by_text = {c["sentence_text"]: c for c in claims}
+
+    opener = next(t for t in by_text if t.startswith("Machine learning techniques have improved"))
+    assert by_text[opener]["needs_citation"] is True
+    assert by_text[opener]["section_title"] == "Introduction"
+
+    assert not any("This study uses a quantitative" in t for t in by_text)
+    assert not any(t.startswith("The next section describes") for t in by_text)
+    assert not any(t.startswith("Table 2 presents") for t in by_text)

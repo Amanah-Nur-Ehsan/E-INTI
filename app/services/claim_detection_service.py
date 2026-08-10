@@ -10,8 +10,10 @@ batches, with the neighbouring sentences as context.
 import hashlib
 import re
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import StrEnum
+from functools import partial
 
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
@@ -380,12 +382,25 @@ def detect_and_store_claims(session: Session, draft_id: uuid.UUID) -> dict:
         else:
             uncached.append((index, sentence, context))
 
-    batch_size = get_settings().classify_batch_size
-    llm_calls = 0
-    for start in range(0, len(uncached), batch_size):
-        batch = uncached[start : start + batch_size]
-        decisions = classify_batch(client, batch, draft_title)
-        llm_calls += 1
+    settings = get_settings()
+    batch_size = settings.classify_batch_size
+    batches = [uncached[start : start + batch_size] for start in range(0, len(uncached), batch_size)]
+    llm_calls = len(batches)
+
+    # classify_batch takes no session and touches no shared mutable state --
+    # only the LLM call itself -- so batches are independent and safe to
+    # run concurrently. pool.map keeps results index-aligned with `batches`
+    # and re-raises the first LLMOutputError in submission order, so a
+    # failure still fails the whole stage exactly as the serial loop did
+    # (see classify_batch's docstring for why that's deliberate).
+    if batches:
+        call = partial(classify_batch, client, draft_title=draft_title)
+        with ThreadPoolExecutor(max_workers=min(settings.llm_max_concurrency, len(batches))) as pool:
+            results = list(pool.map(call, batches))
+    else:
+        results = []
+
+    for decisions in results:
         for idx, decision in decisions.items():
             _store_classification_cache(session, hash_by_index[idx], model_name, decision)
             if idx in records:
