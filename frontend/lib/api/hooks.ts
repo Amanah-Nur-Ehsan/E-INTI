@@ -221,6 +221,39 @@ export function useCreateExport(draftId: string) {
   });
 }
 
+// -- Admin ------------------------------------------------------------
+
+/** 401 means "not logged in", not a real error -- retry: false so the
+ * admin page can render its login form on the very first failed check
+ * without a loading flicker or a retry backoff delay first. */
+export function useAdminSession() {
+  return useQuery({
+    queryKey: ["admin", "session"],
+    queryFn: () => api.get("/api/v1/admin/session"),
+    retry: false,
+  });
+}
+
+export function useAdminLogin() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (password: string) => api.post("/api/v1/admin/login", { body: { password } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "session"] });
+    },
+  });
+}
+
+export function useAdminLogout() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post("/api/v1/admin/logout"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "session"] });
+    },
+  });
+}
+
 export type {
   DraftRead,
   DraftDetail,
