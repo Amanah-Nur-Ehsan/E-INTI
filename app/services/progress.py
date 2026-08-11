@@ -32,12 +32,33 @@ async def reference_counts(session: AsyncSession) -> ReferenceCounts:
         )
     ).scalar_one()
 
+    missing_abstract = (
+        await session.execute(
+            select(func.count())
+            .select_from(ReferencePaper)
+            .where(ReferencePaper.abstract.is_(None))
+        )
+    ).scalar_one()
+
+    embed_pending = (
+        await session.execute(
+            select(func.count())
+            .select_from(ReferencePaper)
+            .where(
+                ReferencePaper.abstract.isnot(None),
+                ReferencePaper.content_hash.is_(None),
+            )
+        )
+    ).scalar_one()
+
     return ReferenceCounts(
         total=sum(by_status.values()),
         pending=by_status.get(EnrichmentStatus.PENDING, 0),
         enriched=by_status.get(EnrichmentStatus.ENRICHED, 0),
         incomplete=by_status.get(EnrichmentStatus.INCOMPLETE, 0),
         failed=by_status.get(EnrichmentStatus.FAILED, 0),
+        missing_abstract=missing_abstract,
+        embed_pending=embed_pending,
         embedded=embedded,
     )
 

@@ -35,6 +35,16 @@ def content_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def mark_embedding_stale(reference: ReferencePaper) -> None:
+    """Call this whenever a reference's embedded text (title, abstract, or
+    keywords) changes. `content_hash IS NULL` is `embed_pending_references`'s
+    exact "needs (re-)embedding" signal -- see its docstring. Writers that
+    fill in an abstract without calling this leave the row silently
+    unembedded, or worse, embedded but stale.
+    """
+    reference.content_hash = None
+
+
 class EmbeddingService:
     def __init__(self) -> None:
         self.settings = get_settings()
@@ -180,28 +190,45 @@ def claim_embedding_text(claim_text: str, context: str | None = None) -> str:
 def embed_pending_references(session: Session, limit: int | None = None) -> dict:
     """Embed library references whose embedded text has changed.
 
-    The content hash covers title + abstract + keywords, so enrichment
-    filling in an abstract invalidates a stale vector automatically. Runs
-    on the library's own schedule (POST /library/refresh), same as
+    `content_hash IS NULL` is the authoritative "needs (re-)embedding"
+    signal, set by `mark_embedding_stale` whenever a writer changes the
+    title/abstract/keywords a reference is embedded from -- filtering on it
+    in SQL (rather than testing "does the hash match" in Python after the
+    fact) is what makes `limit` actually bound the *work performed*, not
+    just the candidate page size.
+
+    A previous version filtered only `abstract IS NOT NULL` and skipped
+    already-current rows in Python after LIMIT was applied. With a small
+    `limit`, that meant the same oldest N rows were re-read, found current,
+    and skipped -- forever, without ever reaching the rows that actually
+    needed embedding. Filtering in SQL fixes that: a skip in the loop below
+    is now only reachable if a hash was computed differently than expected
+    (a genuine bug elsewhere), not the normal case.
+
+    Runs on the library's own schedule (POST /library/refresh), same as
     enrichment -- embedding cost belongs to the paper, not to whichever
     draft happens to cite it.
-
-    `limit`, like `enrich_pending_references`'s, caps the candidate query
-    -- not the count of rows that actually end up re-embedded, since some
-    candidates in that page turn out to already have a matching hash and
-    are skipped. This is what lets `refresh_library` process the library in
-    small chunks instead of one long run that blocks an incoming analysis.
 
     Selects specific columns rather than full ORM entities so a run over
     the whole library doesn't pull every row's 768-float vector just to
     test whether it's already set -- at several thousand rows that's
     tens of megabytes moved for a boolean check.
     """
-    counts = {"embedded": 0, "skipped": 0, "no_abstract": 0}
+    counts = {"embedded": 0, "skipped": 0, "no_abstract": 0, "remaining": 0}
 
     counts["no_abstract"] = session.execute(
         select(func.count()).select_from(ReferencePaper).where(ReferencePaper.abstract.is_(None))
     ).scalar_one()
+
+    pending_filter = (
+        ReferencePaper.abstract.isnot(None),
+        ReferencePaper.content_hash.is_(None),
+    )
+
+    def _count_remaining() -> int:
+        return session.execute(
+            select(func.count()).select_from(ReferencePaper).where(*pending_filter)
+        ).scalar_one()
 
     query = (
         select(
@@ -213,13 +240,14 @@ def embed_pending_references(session: Session, limit: int | None = None) -> dict
             ReferencePaper.content_hash,
             ReferencePaper.embedding.isnot(None),
         )
-        .where(ReferencePaper.abstract.isnot(None))
+        .where(*pending_filter)
         .order_by(ReferencePaper.created_at)
     )
     if limit is not None:
         query = query.limit(limit)
     rows = session.execute(query).all()
     if not rows:
+        counts["remaining"] = _count_remaining()
         return counts
 
     service = get_embedding_service()
@@ -248,4 +276,5 @@ def embed_pending_references(session: Session, limit: int | None = None) -> dict
             counts["embedded"] += 1
         session.commit()
 
+    counts["remaining"] = _count_remaining()
     return counts

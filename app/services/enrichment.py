@@ -20,6 +20,7 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.db.models import ReferencePaper
 from app.db.models.enums import EnrichmentProvider, EnrichmentStatus
+from app.services.embedding_service import mark_embedding_stale
 from app.services.enrichment_types import (
     EnrichmentProviderClient,
     EnrichmentResult,
@@ -64,8 +65,16 @@ def _identity(reference: ReferencePaper) -> RefIdentity:
     )
 
 
+#: Fields that feed reference_embedding_text() (title + abstract + both
+#: keyword lists) -- a change to any of these means the reference's
+#: existing vector, if it has one, no longer matches its text.
+_EMBEDDING_FIELDS = ("title", "abstract", "author_keywords", "index_keywords")
+
+
 def apply_result(reference: ReferencePaper, result: EnrichmentResult) -> None:
     """Fill blanks from a provider result; never overwrite dataset values."""
+    before = {field: getattr(reference, field) for field in _EMBEDDING_FIELDS}
+
     if result.abstract and not reference.abstract:
         reference.abstract = result.abstract.strip()
     if result.authors and not reference.authors:
@@ -96,6 +105,9 @@ def apply_result(reference: ReferencePaper, result: EnrichmentResult) -> None:
         reference.scopus_url = result.scopus_url
     if result.publisher_url and not reference.publisher_url:
         reference.publisher_url = result.publisher_url
+
+    if any(getattr(reference, field) != before[field] for field in _EMBEDDING_FIELDS):
+        mark_embedding_stale(reference)
 
 
 def enrich_reference(reference: ReferencePaper, chain: list[EnrichmentProviderClient]) -> None:

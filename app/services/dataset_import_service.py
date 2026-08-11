@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import ReferencePaper
 from app.db.models.enums import EnrichmentProvider, EnrichmentStatus
+from app.services.embedding_service import mark_embedding_stale
 from app.services.identifier_extraction_service import extract_identifiers
 
 #: canonical field -> accepted header spellings (normalized form)
@@ -271,6 +272,7 @@ def import_dataset(session: Session, content: bytes, filename: str) -> ImportSum
                 existing_ref.abstract = trusted_abstract
                 existing_ref.enrichment_status = EnrichmentStatus.ENRICHED
                 existing_ref.enrichment_provider = EnrichmentProvider.DATASET
+                mark_embedding_stale(existing_ref)
                 has_abstract.add(existing_id)
                 summary.backfilled_abstracts += 1
             else:

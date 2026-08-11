@@ -11,6 +11,14 @@ class ReferenceCounts(BaseModel):
     incomplete: int
     failed: int
     embedded: int
+    #: abstract IS NULL -- structurally unreachable by retrieval no matter
+    #: how much enrichment/embedding runs, until an abstract is filled in.
+    missing_abstract: int
+    #: abstract IS NOT NULL AND content_hash IS NULL -- has what it needs to
+    #: be embedded but the vector hasn't been (re)computed yet. This is the
+    #: number that would have caught the embedding livelock: `embedded`
+    #: alone looked fine sitting at 115 with nothing to compare it against.
+    embed_pending: int
 
 
 class ClaimCounts(BaseModel):

@@ -6,6 +6,7 @@ from app.db.models import ReferencePaper
 from app.services.embedding_service import (
     embed_pending_references,
     fake_embed,
+    mark_embedding_stale,
     reference_embedding_text,
 )
 from app.services.enrichment import enrich_pending_references
@@ -71,9 +72,15 @@ async def test_reembeds_only_changed_content(client, db_session):
     await _enriched_library(client, db_session)
     embed_pending_references(db_session)
 
+    # Every row is already embedded and current, so the SQL-side
+    # content_hash IS NULL filter selects nothing -- there's no longer a
+    # "candidate found current, skipped" case in the normal path (that was
+    # the shape of the original livelock: the same already-current rows
+    # kept being re-selected and skipped, forever).
     second = embed_pending_references(db_session)
     assert second["embedded"] == 0
-    assert second["skipped"] == 10
+    assert second["skipped"] == 0
+    assert second["remaining"] == 0
 
     changed = (
         db_session.execute(
@@ -83,11 +90,13 @@ async def test_reembeds_only_changed_content(client, db_session):
         .first()
     )
     changed.abstract = changed.abstract + " An additional sentence changes the hash."
+    mark_embedding_stale(changed)  # what a real writer (apply_result, import) now does
     db_session.commit()
 
     third = embed_pending_references(db_session)
     assert third["embedded"] == 1
-    assert third["skipped"] == 9
+    assert third["skipped"] == 0
+    assert third["remaining"] == 0
 
 
 async def test_pgvector_nearest_neighbour_query(client, db_session):

@@ -59,4 +59,6 @@ async def test_references_status_endpoint(client):
         "incomplete": 0,
         "failed": 0,
         "embedded": 0,
+        "missing_abstract": 5,
+        "embed_pending": 7,
     }

@@ -88,14 +88,21 @@ def refresh_library(_reschedule: bool = True) -> dict:
 
     log.info("library_refresh_chunk_done", enrich=enrich_counts, embed=embed_counts)
 
-    # Neither counts dict reports "how many PENDING rows are left" directly
-    # -- but each candidate query was capped at `chunk`, so processing a
-    # full chunk's worth of candidates (rather than fewer) means the
-    # backlog likely isn't exhausted yet. Cheaper than a second COUNT
-    # query, and wrong only in the direction of one harmless extra chunk.
+    # enrich_pending_references doesn't report "how many PENDING rows are
+    # left" directly -- but its candidate query was capped at `chunk`, so
+    # processing a full chunk's worth (rather than fewer) means the backlog
+    # likely isn't exhausted yet. Cheaper than a second COUNT query, and
+    # wrong only in the direction of one harmless extra chunk.
+    #
+    # embed_pending_references DOES report an exact remaining count, and
+    # that exactness matters: counting "skipped" (already-current rows) as
+    # progress was the original livelock -- with a small chunk size, the
+    # same already-embedded rows at the front of the query would be
+    # re-selected and skipped every tick, forever, without ever reaching
+    # rows that actually needed embedding. `remaining` reflects the
+    # embed-side SQL filter directly, so it can't repeat that mistake.
     enrich_processed = sum(enrich_counts.get(k, 0) for k in ("enriched", "incomplete", "failed"))
-    embed_processed = embed_counts.get("embedded", 0) + embed_counts.get("skipped", 0)
-    work_remaining = enrich_processed >= chunk or embed_processed >= chunk
+    work_remaining = enrich_processed >= chunk or embed_counts.get("remaining", 0) > 0
 
     if _reschedule and work_remaining:
         refresh_library.apply_async(countdown=1)
