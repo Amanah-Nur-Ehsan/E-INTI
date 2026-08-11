@@ -56,7 +56,13 @@ def clean_db(_migrated_db, settings) -> Iterator[None]:
 
 
 @pytest.fixture
-async def client(clean_db) -> AsyncIterator:
+async def anon_client(clean_db) -> AsyncIterator:
+    """Unauthenticated client -- no admin session. Use this (not `client`)
+    when a test specifically exercises the unauthenticated/401 path;
+    everything else should use `client`, which is pre-logged-in so the
+    hundreds of tests seeding the library via POST /library/import don't
+    each need to know about admin auth.
+    """
     import httpx
 
     from app.main import app
@@ -64,6 +70,21 @@ async def client(clean_db) -> AsyncIterator:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+
+
+@pytest.fixture
+async def client(anon_client, settings) -> AsyncIterator:
+    """Admin-authenticated by default. httpx.AsyncClient carries cookies
+    across requests within one instance, so logging in once here covers
+    every call a test makes through this fixture -- including the
+    admin-gated /library/import and /library/refresh most tests only use
+    incidentally, to seed data, not to test auth itself.
+    """
+    resp = await anon_client.post(
+        "/api/v1/admin/login", json={"password": settings.admin_password_or_default}
+    )
+    assert resp.status_code == 204, f"test admin login failed: {resp.status_code} {resp.text}"
+    yield anon_client
 
 
 async def upload_draft(client, filename: str = "sample_draft.docx") -> str:

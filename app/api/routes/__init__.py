@@ -5,6 +5,7 @@ API_PREFIX = "/api/v1"
 
 def register_routes(app: FastAPI) -> None:
     from app.api.routes import (
+        admin,
         analysis,
         claims,
         drafts,
@@ -15,6 +16,8 @@ def register_routes(app: FastAPI) -> None:
 
     app.include_router(drafts.router, prefix=API_PREFIX)
     app.include_router(references.router, prefix=API_PREFIX)
+    app.include_router(references.admin_router, prefix=API_PREFIX)
+    app.include_router(admin.router, prefix=API_PREFIX)
     app.include_router(analysis.router, prefix=API_PREFIX)
     app.include_router(claims.router, prefix=API_PREFIX)
     app.include_router(recommendations.router, prefix=API_PREFIX)

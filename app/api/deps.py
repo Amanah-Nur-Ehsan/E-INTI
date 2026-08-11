@@ -4,10 +4,12 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.security import require_admin
 from app.db.models import Draft
 from app.db.session import get_session
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+AdminDep = Annotated[None, Depends(require_admin)]
 
 
 async def get_draft_or_404(draft_id: uuid.UUID, session: SessionDep) -> Draft:
