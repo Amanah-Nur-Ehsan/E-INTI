@@ -7,11 +7,9 @@ import { SdgSummary } from "@/components/SdgSummary";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { downloadUrl, missingAbstractsTemplateUrl } from "@/lib/api/client";
+import { missingAbstractsTemplateUrl } from "@/lib/api/client";
 import {
-  useAcceptedCitations,
   useAnalysisStatus,
-  useCreateExport,
   useImportLibrary,
   useLibraryStatus,
   useMissingAbstractsByYear,
@@ -175,6 +173,8 @@ function LibraryStrip() {
             <span className="text-xs text-muted-foreground">
               enriched {status.enriched} · incomplete {status.incomplete} · failed {status.failed} ·
               embedded {status.embedded}
+              {status.embed_pending > 0 ? ` (${status.embed_pending} pending)` : ""} · missing
+              abstract {status.missing_abstract}
             </span>
           )}
 
@@ -216,14 +216,9 @@ export default function Home() {
   const uploadDraft = useUploadDraft();
   const runAnalysis = useRunAnalysis(draftId ?? "");
   const { data: status } = useAnalysisStatus(draftId ?? "", hasStartedAnalysis);
-  const { data: acceptedCitations } = useAcceptedCitations(draftId ?? "");
-  const createExport = useCreateExport(draftId ?? "");
 
   const isRunning = status ? status.status === "PENDING" || status.status === "RUNNING" : false;
   const isCompleted = status?.status === "COMPLETED";
-  const hasAcceptedCitation = Boolean(
-    acceptedCitations && Object.keys(acceptedCitations).length > 0,
-  );
 
   async function handleUpload() {
     if (!selectedDraftFile) return;
@@ -339,32 +334,6 @@ export default function Home() {
             sdgClosestName={status?.sdg_closest_name}
           />
           <BestReferencesPanel draftId={draftId ?? ""} enabled={isCompleted} />
-
-          <div className="flex flex-col items-end gap-1">
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={createExport.isPending || !hasAcceptedCitation}
-              onClick={async () => {
-                const exportResult = await createExport.mutateAsync({
-                  format: "docx",
-                  citation_style: "APA",
-                  insertion_mode: "tracked_changes",
-                  // The audit table is an internal QA report, not manuscript
-                  // content -- the exported paper should come back clean.
-                  include_audit_report: false,
-                });
-                window.location.href = downloadUrl(exportResult.id);
-              }}
-            >
-              {createExport.isPending ? "Preparing…" : "Download DOCX"}
-            </Button>
-            {!hasAcceptedCitation && (
-              <span className="text-xs text-muted-foreground">
-                Select at least one citation to download
-              </span>
-            )}
-          </div>
         </>
       )}
     </main>

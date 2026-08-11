@@ -902,6 +902,10 @@ export interface components {
             failed: number;
             /** Embedded */
             embedded: number;
+            /** Missing Abstract */
+            missing_abstract: number;
+            /** Embed Pending */
+            embed_pending: number;
         };
         /**
          * ReferenceDetail
