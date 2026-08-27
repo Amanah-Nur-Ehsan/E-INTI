@@ -1,7 +1,12 @@
 from starlette.requests import Request
 
 from app.core.config import get_settings
-from app.core.security import _same_origin_request, check_password
+from app.core.security import (
+    _same_origin_request,
+    check_password,
+    hash_password,
+    verify_password,
+)
 
 
 def _request(headers: dict[str, str], method: str = "POST") -> Request:
@@ -59,3 +64,18 @@ def test_same_origin_request_allows_when_neither_header_present():
     """
     req = _request({"host": "veriref.pro"})
     assert _same_origin_request(req) is True
+
+
+def test_password_hash_round_trip():
+    stored = hash_password("correct-horse-battery")
+    assert verify_password("correct-horse-battery", stored) is True
+    assert verify_password("wrong", stored) is False
+
+
+def test_password_hashes_are_salted():
+    assert hash_password("same-password") != hash_password("same-password")
+
+
+def test_verify_password_fails_closed_on_malformed_stored_hash():
+    for bad in ("", "not-a-hash", "pbkdf2_sha256$abc", "argon2$1$2$3$4"):
+        assert verify_password("anything", bad) is False

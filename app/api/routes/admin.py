@@ -9,6 +9,7 @@ from app.core.security import (
     check_password,
     create_admin_session,
     destroy_admin_session,
+    destroy_user_session,
     is_login_locked_out,
     record_login_failure,
     reset_login_failures,
@@ -36,7 +37,10 @@ async def login(body: AdminLoginRequest, response: Response) -> None:
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(request: Request, response: Response, _admin: AdminDep) -> None:
+    # AdminDep admits either a role=admin user or the legacy shared-password
+    # admin, so clear both session types.
     await destroy_admin_session(request, response)
+    await destroy_user_session(request, response)
 
 
 @router.get("/session", response_model=AdminSessionStatus)

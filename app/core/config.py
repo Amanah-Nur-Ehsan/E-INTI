@@ -180,6 +180,32 @@ class Settings(BaseSettings):
     #: so localhost-over-http still works). Set explicitly to override.
     admin_cookie_secure: bool | None = None
 
+    # User authentication (per-user accounts with roles -- see
+    # app/core/security.py and app/api/routes/auth.py). Registration is
+    # invite-only: off until REGISTRATION_ENABLED=true, because opening
+    # public signup is a deployment decision, not a default. Email is
+    # always real SMTP (no mock): the fail-fast validator below refuses to
+    # start with registration on and no SMTP host.
+    registration_enabled: bool = False
+    #: Emails that become role=admin automatically at registration.
+    admin_emails: list[str] = []
+    user_session_ttl_seconds: int = 43200  # 12h
+    activation_token_ttl_seconds: int = 86400  # 24h
+    reset_token_ttl_seconds: int = 1800  # 30min
+    smtp_host: str = ""
+    smtp_port: int = 1025
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_use_tls: bool = False
+    smtp_from: str = "noreply@example.org"
+    #: Base URL the activation/reset links in emails point at (the public
+    #: frontend origin, not the API).
+    app_public_url: str = "http://localhost:3100"
+
+    @property
+    def admin_emails_set(self) -> frozenset[str]:
+        return frozenset(email.strip().lower() for email in self.admin_emails if email.strip())
+
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
@@ -209,6 +235,14 @@ class Settings(BaseSettings):
     def _empty_string_is_false(cls, value: Any) -> Any:
         if isinstance(value, str) and value.strip() == "":
             return False
+        return value
+
+    @field_validator("admin_emails", mode="before")
+    @classmethod
+    def _parse_admin_emails(cls, value: Any) -> Any:
+        """ADMIN_EMAILS is a comma-separated string in .env, not JSON."""
+        if isinstance(value, str):
+            return [part.strip() for part in value.split(",") if part.strip()]
         return value
 
     @property
@@ -255,6 +289,17 @@ class Settings(BaseSettings):
             logging.getLogger(__name__).warning(
                 "ADMIN_PASSWORD is unset -- defaulting to 'dev' for local development. "
                 "This default is refused outside ENVIRONMENT=production."
+            )
+
+        if self.registration_enabled and not self.smtp_host:
+            raise ValueError(
+                "REGISTRATION_ENABLED=true requires SMTP_HOST (email is always real SMTP -- "
+                "there is no mock email provider)."
+            )
+        if self.registration_enabled and self.is_production and "localhost" in self.app_public_url:
+            raise ValueError(
+                "ENVIRONMENT=production requires APP_PUBLIC_URL to be the real frontend origin, "
+                "not the localhost default -- activation/reset links must point at the public site."
             )
 
         return self

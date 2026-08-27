@@ -9,6 +9,7 @@ from app.db.models.claim import Claim
 from app.db.models.draft import Draft
 from app.db.models.export import Export
 from app.db.models.reference_paper import ReferencePaper
+from app.db.models.user import User, UserToken
 
 __all__ = [
     "AcceptedCitation",
@@ -20,4 +21,6 @@ __all__ = [
     "LLMClassificationCache",
     "LLMVerificationCache",
     "ReferencePaper",
+    "User",
+    "UserToken",
 ]

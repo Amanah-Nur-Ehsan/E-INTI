@@ -111,3 +111,13 @@ class ExportFormat(StrEnum):
     MD = "md"
     CSV = "csv"
     JSON = "json"
+
+
+class UserRole(StrEnum):
+    USER = "user"
+    ADMIN = "admin"
+
+
+class UserTokenKind(StrEnum):
+    ACTIVATION = "ACTIVATION"
+    PASSWORD_RESET = "PASSWORD_RESET"

@@ -48,7 +48,8 @@ def clean_db(_migrated_db, settings) -> Iterator[None]:
                 "TRUNCATE drafts, reference_papers, claims, "
                 "citation_recommendations, accepted_citations, "
                 "llm_verification_cache, llm_classification_cache, "
-                "analysis_runs, exports RESTART IDENTITY CASCADE"
+                "analysis_runs, exports, users, user_tokens "
+                "RESTART IDENTITY CASCADE"
             )
         )
     engine.dispose()

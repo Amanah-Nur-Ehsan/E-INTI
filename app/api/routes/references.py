@@ -15,8 +15,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from fastapi.responses import Response
 from sqlalchemy import case, func, select
 
-from app.api.deps import SessionDep
-from app.core.security import require_admin
+from app.api.deps import SessionDep, require_any_admin
 from app.core.uploads import read_upload_capped
 from app.db.models import ReferencePaper
 from app.schemas.analysis import ReferenceCounts
@@ -26,7 +25,7 @@ from app.services.progress import reference_counts
 
 router = APIRouter(prefix="/library", tags=["library"])
 admin_router = APIRouter(
-    prefix="/library", tags=["library"], dependencies=[Depends(require_admin)]
+    prefix="/library", tags=["library"], dependencies=[Depends(require_any_admin)]
 )
 
 
