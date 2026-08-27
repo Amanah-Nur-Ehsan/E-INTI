@@ -4,7 +4,7 @@
  */
 
 export interface paths {
-    "/api/v1/drafts/upload": {
+    "/api/v1/auth/register": {
         parameters: {
             query?: never;
             header?: never;
@@ -13,23 +13,74 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Upload Draft */
-        post: operations["upload_draft_api_v1_drafts_upload_post"];
+        /** Register */
+        post: operations["register_api_v1_auth_register_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/drafts": {
+    "/api/v1/auth/activate": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List Drafts */
-        get: operations["list_drafts_api_v1_drafts_get"];
+        get?: never;
+        put?: never;
+        /** Activate */
+        post: operations["activate_api_v1_auth_activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Login */
+        post: operations["login_api_v1_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Logout */
+        post: operations["logout_api_v1_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Session Status */
+        get: operations["session_status_api_v1_auth_session_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -38,15 +89,103 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/drafts/{draft_id}": {
+    "/api/v1/auth/me": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get Draft */
-        get: operations["get_draft_api_v1_drafts__draft_id__get"];
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Profile
+         * @description Update the signed-in user's profile (currently just their name).
+         */
+        patch: operations["update_profile_api_v1_auth_me_patch"];
+        trace?: never;
+    };
+    "/api/v1/auth/forgot-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Forgot Password */
+        post: operations["forgot_password_api_v1_auth_forgot_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/reset-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reset Password */
+        post: operations["reset_password_api_v1_auth_reset_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Login */
+        post: operations["login_api_v1_admin_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Logout */
+        post: operations["logout_api_v1_admin_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Session Status */
+        get: operations["session_status_api_v1_admin_session_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -180,7 +319,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/login": {
+    "/api/v1/drafts/upload": {
         parameters: {
             query?: never;
             header?: never;
@@ -189,40 +328,40 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Login */
-        post: operations["login_api_v1_admin_login_post"];
+        /** Upload Draft */
+        post: operations["upload_draft_api_v1_drafts_upload_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/logout": {
+    "/api/v1/drafts": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List Drafts */
+        get: operations["list_drafts_api_v1_drafts_get"];
         put?: never;
-        /** Logout */
-        post: operations["logout_api_v1_admin_logout_post"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/session": {
+    "/api/v1/drafts/{draft_id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Session Status */
-        get: operations["session_status_api_v1_admin_session_get"];
+        /** Get Draft */
+        get: operations["get_draft_api_v1_drafts__draft_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -549,6 +688,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActivateRequest */
+        ActivateRequest: {
+            /** Token */
+            token: string;
+        };
         /** AdminLoginRequest */
         AdminLoginRequest: {
             /** Password */
@@ -610,6 +754,17 @@ export interface components {
             sdg_closest_number?: number | null;
             /** Sdg Closest Name */
             sdg_closest_name?: string | null;
+        };
+        /** AuthSessionStatus */
+        AuthSessionStatus: {
+            /** Authenticated */
+            authenticated: boolean;
+            /** Email */
+            email?: string | null;
+            /** Role */
+            role?: string | null;
+            /** Full Name */
+            full_name?: string | null;
         };
         /** BestReferenceClaim */
         BestReferenceClaim: {
@@ -863,6 +1018,14 @@ export interface components {
              */
             include_audit_report: boolean;
         };
+        /** ForgotPasswordRequest */
+        ForgotPasswordRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -886,6 +1049,16 @@ export interface components {
          * @enum {string}
          */
         InsertionMode: "tracked_changes" | "direct" | "placeholder";
+        /** LoginRequest */
+        LoginRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Password */
+            password: string;
+        };
         /** MissingAbstractsByYear */
         MissingAbstractsByYear: {
             /** Year */
@@ -1078,6 +1251,25 @@ export interface components {
             /** Abstract */
             abstract: string | null;
         };
+        /** RegisterRequest */
+        RegisterRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Password */
+            password: string;
+            /** Full Name */
+            full_name?: string | null;
+        };
+        /** ResetPasswordRequest */
+        ResetPasswordRequest: {
+            /** Token */
+            token: string;
+            /** New Password */
+            new_password: string;
+        };
         /** ScoreBreakdownOut */
         ScoreBreakdownOut: {
             /** Semantic Similarity */
@@ -1105,6 +1297,11 @@ export interface components {
             /** Note */
             note?: string | null;
         };
+        /** UpdateProfileRequest */
+        UpdateProfileRequest: {
+            /** Full Name */
+            full_name?: string | null;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -1127,7 +1324,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    upload_draft_api_v1_drafts_upload_post: {
+    register_api_v1_auth_register_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1136,7 +1333,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_upload_draft_api_v1_drafts_upload_post"];
+                "application/json": components["schemas"]["RegisterRequest"];
             };
         };
         responses: {
@@ -1146,7 +1343,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DraftRead"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -1160,7 +1359,87 @@ export interface operations {
             };
         };
     };
-    list_drafts_api_v1_drafts_get: {
+    activate_api_v1_auth_activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    login_api_v1_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logout_api_v1_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    session_status_api_v1_auth_session_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1175,18 +1454,160 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DraftRead"][];
+                    "application/json": components["schemas"]["AuthSessionStatus"];
                 };
             };
         };
     };
-    get_draft_api_v1_drafts__draft_id__get: {
+    update_profile_api_v1_auth_me_patch: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                draft_id: string;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProfileRequest"];
             };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSessionStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forgot_password_api_v1_auth_forgot_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForgotPasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_password_api_v1_auth_reset_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetPasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    login_api_v1_admin_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logout_api_v1_admin_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    session_status_api_v1_admin_session_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -1197,16 +1618,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DraftDetail"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["AdminSessionStatus"];
                 };
             };
         };
@@ -1370,7 +1782,7 @@ export interface operations {
             };
         };
     };
-    login_api_v1_admin_login_post: {
+    upload_draft_api_v1_drafts_upload_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1379,16 +1791,18 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AdminLoginRequest"];
+                "multipart/form-data": components["schemas"]["Body_upload_draft_api_v1_drafts_upload_post"];
             };
         };
         responses: {
             /** @description Successful Response */
-            204: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DraftRead"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -1401,25 +1815,7 @@ export interface operations {
             };
         };
     };
-    logout_api_v1_admin_logout_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    session_status_api_v1_admin_session_get: {
+    list_drafts_api_v1_drafts_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1434,7 +1830,38 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AdminSessionStatus"];
+                    "application/json": components["schemas"]["DraftRead"][];
+                };
+            };
+        };
+    };
+    get_draft_api_v1_drafts__draft_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

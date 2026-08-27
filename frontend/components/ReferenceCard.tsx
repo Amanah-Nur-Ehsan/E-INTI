@@ -72,7 +72,7 @@ export function ReferenceCard({ draftId, item }: { draftId: string; item: BestRe
         </p>
       )}
       {meets_threshold && !is_recommended && (
-        <p className="mb-2 rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800">
+        <p className="mb-2 rounded-md border border-sky-200 bg-sky-50 p-2 text-xs text-sky-800">
           Clears the {item.min_score_threshold}% threshold but not the{" "}
           {item.recommended_score_threshold}% recommended bar.
         </p>

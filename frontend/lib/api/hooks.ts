@@ -17,6 +17,13 @@ type ExportRequest = components["schemas"]["ExportRequest"];
 type BestReferenceRead = components["schemas"]["BestReferenceRead"];
 type ParagraphRewriteRead = components["schemas"]["ParagraphRewriteRead"];
 type MissingAbstractsByYear = components["schemas"]["MissingAbstractsByYear"];
+type AuthSessionStatus = components["schemas"]["AuthSessionStatus"];
+type RegisterRequest = components["schemas"]["RegisterRequest"];
+type LoginRequest = components["schemas"]["LoginRequest"];
+type ActivateRequest = components["schemas"]["ActivateRequest"];
+type ForgotPasswordRequest = components["schemas"]["ForgotPasswordRequest"];
+type ResetPasswordRequest = components["schemas"]["ResetPasswordRequest"];
+type UpdateProfileRequest = components["schemas"]["UpdateProfileRequest"];
 
 const RUNNING_STATUSES = new Set(["PENDING", "RUNNING"]);
 
@@ -254,6 +261,84 @@ export function useAdminLogout() {
   });
 }
 
+// -- User auth ------------------------------------------------------------
+
+/** 401 means "not logged in", not a real error -- retry: false so pages
+ * can render their login prompt on the first failed check without a
+ * loading flicker or a retry backoff delay first. */
+export function useSession() {
+  return useQuery({
+    queryKey: ["auth", "session"],
+    queryFn: () => api.get("/api/v1/auth/session") as Promise<AuthSessionStatus>,
+    retry: false,
+  });
+}
+
+export function useLogin() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: LoginRequest) => api.post("/api/v1/auth/login", { body }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["auth", "session"] });
+    },
+  });
+}
+
+export function useLogout() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post("/api/v1/auth/logout"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["auth", "session"] });
+      // /admin/session is a separate query; logout clears that session too.
+      queryClient.invalidateQueries({ queryKey: ["admin", "session"] });
+    },
+  });
+}
+
+export function useRegister() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RegisterRequest) => api.post("/api/v1/auth/register", { body }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["auth", "session"] });
+    },
+  });
+}
+
+export function useActivate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ActivateRequest) => api.post("/api/v1/auth/activate", { body }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["auth", "session"] });
+    },
+  });
+}
+
+export function useForgotPassword() {
+  return useMutation({
+    mutationFn: (body: ForgotPasswordRequest) =>
+      api.post("/api/v1/auth/forgot-password", { body }),
+  });
+}
+
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: (body: ResetPasswordRequest) => api.post("/api/v1/auth/reset-password", { body }),
+  });
+}
+
+export function useUpdateProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateProfileRequest) => api.patch("/api/v1/auth/me", { body }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["auth", "session"] });
+    },
+  });
+}
+
 export type {
   DraftRead,
   DraftDetail,
@@ -268,4 +353,11 @@ export type {
   BestReferenceRead,
   ParagraphRewriteRead,
   MissingAbstractsByYear,
+  AuthSessionStatus,
+  RegisterRequest,
+  LoginRequest,
+  ActivateRequest,
+  ForgotPasswordRequest,
+  ResetPasswordRequest,
+  UpdateProfileRequest,
 };

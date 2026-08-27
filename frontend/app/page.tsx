@@ -5,10 +5,18 @@ import { useState } from "react";
 import { BestReferencesPanel } from "@/components/BestReferencesPanel";
 import { FilePicker } from "@/components/FilePicker";
 import { SdgSummary } from "@/components/SdgSummary";
+import { RedirectTo } from "@/components/auth/RedirectTo";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { useAnalysisStatus, useLibraryStatus, useRunAnalysis, useUploadDraft } from "@/lib/api/hooks";
+import {
+  useAnalysisStatus,
+  useLibraryStatus,
+  useRunAnalysis,
+  useSession,
+  useUploadDraft,
+} from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
 import type { AnalysisRunStatus } from "@/lib/api/hooks";
 
@@ -53,12 +61,25 @@ export default function Home() {
   const [selectedDraftFile, setSelectedDraftFile] = useState<File | null>(null);
   const [hasStartedAnalysis, setHasStartedAnalysis] = useState(false);
 
+  const { data: session, isLoading } = useSession();
   const uploadDraft = useUploadDraft();
   const runAnalysis = useRunAnalysis(draftId ?? "");
   const { data: status } = useAnalysisStatus(draftId ?? "", hasStartedAnalysis);
 
   const isRunning = status ? status.status === "PENDING" || status.status === "RUNNING" : false;
   const isCompleted = status?.status === "COMPLETED";
+
+  if (isLoading) {
+    return (
+      <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8">
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      </main>
+    );
+  }
+
+  if (!session?.authenticated) {
+    return <RedirectTo to="/login" />;
+  }
 
   async function handleUpload() {
     if (!selectedDraftFile) return;
@@ -75,15 +96,8 @@ export default function Home() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8">
-      <header>
-        <h1 className="text-xl font-semibold text-foreground">CitationINTI</h1>
-        <p className="text-sm text-muted-foreground">
-          Upload a draft, find Scopus-indexed citations for its claims, and export a marked-up
-          docx.
-        </p>
-      </header>
-
+    <DashboardShell>
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
       <LibraryCount />
 
       <Card className="p-4">
@@ -158,7 +172,7 @@ export default function Home() {
                 isCompleted
                   ? "bg-green-100 text-green-800 border-green-200"
                   : isRunning
-                    ? "bg-blue-100 text-blue-800 border-blue-200"
+                    ? "bg-sky-100 text-sky-800 border-sky-200"
                     : "bg-red-100 text-red-800 border-red-200",
               )}
             >
@@ -183,6 +197,7 @@ export default function Home() {
           <BestReferencesPanel draftId={draftId ?? ""} enabled={isCompleted} />
         </>
       )}
-    </main>
+      </div>
+    </DashboardShell>
   );
 }
