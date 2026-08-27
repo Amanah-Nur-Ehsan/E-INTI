@@ -130,17 +130,24 @@ export default function Home() {
           </>
         )}
         {draftId && !status && (
-          <Button
-            size="sm"
-            className="mt-3"
-            disabled={runAnalysis.isPending}
-            onClick={() => {
-              setHasStartedAnalysis(true);
-              runAnalysis.mutate();
-            }}
-          >
-            {runAnalysis.isPending ? "Starting…" : "Run analysis"}
-          </Button>
+          <>
+            <Button
+              size="sm"
+              className="mt-3"
+              disabled={runAnalysis.isPending}
+              onClick={() => {
+                setHasStartedAnalysis(true);
+                runAnalysis.mutate();
+              }}
+            >
+              {runAnalysis.isPending ? "Starting…" : "Run analysis"}
+            </Button>
+            {runAnalysis.isError && (
+              <p className="mt-2 text-xs text-destructive">
+                {(runAnalysis.error as Error).message}
+              </p>
+            )}
+          </>
         )}
         {status && (
           <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
