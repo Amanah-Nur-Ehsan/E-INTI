@@ -1,4 +1,5 @@
 "use client";
+import { AuthBrandMark } from "@/components/auth/AuthBrandMark";
 
 import Link from "next/link";
 import { useState } from "react";
@@ -11,9 +12,7 @@ export function ForgotPasswordForm() {
 
   return (
     <div className="w-full">
-      <p className="font-serif text-2xl font-semibold tracking-tight text-[#0C2D48] lg:hidden">
-        CitationINTI
-      </p>
+      <AuthBrandMark />
       <h2 className="mt-1 text-2xl font-semibold tracking-tight text-[#0C2D48] lg:mt-0">
         Reset password
       </h2>
@@ -37,7 +36,7 @@ export function ForgotPasswordForm() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@university.edu"
-            className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
+            className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
           />
         </label>
 
@@ -51,14 +50,14 @@ export function ForgotPasswordForm() {
           type="submit"
           size="lg"
           disabled={!email || forgot.isPending}
-          className="h-11 rounded-lg bg-sky-600 text-white shadow-sm hover:bg-sky-700 focus-visible:ring-sky-300"
+          className="h-11 rounded-lg bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:ring-red-300"
         >
           {forgot.isPending ? "Sending…" : "Send reset link"}
         </Button>
       </form>
 
       {forgot.isSuccess && (
-        <p className="mt-4 rounded-lg bg-sky-50 px-3.5 py-2.5 text-sm text-sky-800">
+        <p className="mt-4 rounded-lg bg-zinc-50 px-3.5 py-2.5 text-sm text-zinc-700">
           If that email has an account, a reset link is on its way.
         </p>
       )}
@@ -66,7 +65,7 @@ export function ForgotPasswordForm() {
       <div className="mt-4 text-sm">
         <Link
           href="/login"
-          className="font-medium text-sky-600 hover:text-sky-700 hover:underline"
+          className="font-medium text-red-600 hover:text-red-700 hover:underline"
         >
           Back to sign in
         </Link>

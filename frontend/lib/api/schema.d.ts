@@ -104,7 +104,7 @@ export interface paths {
         head?: never;
         /**
          * Update Profile
-         * @description Update the signed-in user's profile (currently just their name).
+         * @description Update the signed-in user's profile.
          */
         patch: operations["update_profile_api_v1_auth_me_patch"];
         trace?: never;
@@ -143,57 +143,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/login": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Login */
-        post: operations["login_api_v1_admin_login_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/logout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Logout */
-        post: operations["logout_api_v1_admin_logout_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/session": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Session Status */
-        get: operations["session_status_api_v1_admin_session_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/library/status": {
         parameters: {
             query?: never;
@@ -203,6 +152,27 @@ export interface paths {
         };
         /** References Status */
         get: operations["references_status_api_v1_library_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin Overview
+         * @description Dashboard numbers: user counts, library enrichment state, and app
+         *     status (environment, in-flight/last analysis run).
+         */
+        get: operations["admin_overview_api_v1_admin_overview_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -313,6 +283,58 @@ export interface paths {
         get: operations["list_references_api_v1_library_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Users */
+        get: operations["list_users_api_v1_admin_users_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete User */
+        delete: operations["delete_user_api_v1_admin_users__user_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update User */
+        patch: operations["update_user_api_v1_admin_users__user_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/reset-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reset User Password */
+        post: operations["reset_user_password_api_v1_admin_users__user_id__reset_password_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -667,6 +689,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analysis/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List History
+         * @description All past analyses, newest first, with a summary drawn from each run's
+         *     stored result snapshot.
+         */
+        get: operations["list_history_api_v1_analysis_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analysis/history/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get History Detail
+         * @description The frozen result snapshot of one completed analysis.
+         */
+        get: operations["get_history_detail_api_v1_analysis_history__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -693,15 +756,47 @@ export interface components {
             /** Token */
             token: string;
         };
-        /** AdminLoginRequest */
-        AdminLoginRequest: {
-            /** Password */
-            password: string;
+        /** AdminOverview */
+        AdminOverview: {
+            users: components["schemas"]["UserCounts"];
+            library: components["schemas"]["ReferenceCounts"];
+            app: components["schemas"]["AppStatus"];
         };
-        /** AdminSessionStatus */
-        AdminSessionStatus: {
-            /** Authenticated */
-            authenticated: boolean;
+        /** AnalysisHistoryItem */
+        AnalysisHistoryItem: {
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Draft Id
+             * Format: uuid
+             */
+            draft_id: string;
+            /** Filename */
+            filename: string;
+            /** Status */
+            status: string;
+            /** Error */
+            error: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Sdg Number */
+            sdg_number: number | null;
+            /** Sdg Name */
+            sdg_name: string | null;
+            /** Claims Total */
+            claims_total: number | null;
+            /** Recommendations */
+            recommendations: number | null;
+            /** Accepted */
+            accepted: number | null;
         };
         /** AnalysisRunAccepted */
         AnalysisRunAccepted: {
@@ -755,6 +850,23 @@ export interface components {
             /** Sdg Closest Name */
             sdg_closest_name?: string | null;
         };
+        /** AppStatus */
+        AppStatus: {
+            /** Environment */
+            environment: string;
+            /** Active Analyses */
+            active_analyses: number;
+            /** Last Run Status */
+            last_run_status: string | null;
+            /** Last Run Stage */
+            last_run_stage: string | null;
+            /** Last Run Started At */
+            last_run_started_at: string | null;
+            /** Last Run Finished At */
+            last_run_finished_at: string | null;
+            /** Last Run Error */
+            last_run_error: string | null;
+        };
         /** AuthSessionStatus */
         AuthSessionStatus: {
             /** Authenticated */
@@ -765,6 +877,14 @@ export interface components {
             role?: string | null;
             /** Full Name */
             full_name?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Address */
+            address?: string | null;
+            /** Affiliation */
+            affiliation?: string | null;
+            /** Bio */
+            bio?: string | null;
         };
         /** BestReferenceClaim */
         BestReferenceClaim: {
@@ -1253,6 +1373,14 @@ export interface components {
         };
         /** RegisterRequest */
         RegisterRequest: {
+            /** Phone */
+            phone?: string | null;
+            /** Address */
+            address?: string | null;
+            /** Affiliation */
+            affiliation?: string | null;
+            /** Bio */
+            bio?: string | null;
             /**
              * Email
              * Format: email
@@ -1262,6 +1390,11 @@ export interface components {
             password: string;
             /** Full Name */
             full_name?: string | null;
+        };
+        /** ResetPasswordAdminRequest */
+        ResetPasswordAdminRequest: {
+            /** New Password */
+            new_password: string;
         };
         /** ResetPasswordRequest */
         ResetPasswordRequest: {
@@ -1299,9 +1432,80 @@ export interface components {
         };
         /** UpdateProfileRequest */
         UpdateProfileRequest: {
+            /** Phone */
+            phone?: string | null;
+            /** Address */
+            address?: string | null;
+            /** Affiliation */
+            affiliation?: string | null;
+            /** Bio */
+            bio?: string | null;
             /** Full Name */
             full_name?: string | null;
         };
+        /** UpdateUserAdminRequest */
+        UpdateUserAdminRequest: {
+            /** Phone */
+            phone?: string | null;
+            /** Address */
+            address?: string | null;
+            /** Affiliation */
+            affiliation?: string | null;
+            /** Bio */
+            bio?: string | null;
+            /** Full Name */
+            full_name?: string | null;
+            /** Email */
+            email?: string | null;
+            role?: components["schemas"]["UserRole"] | null;
+            /** Is Active */
+            is_active?: boolean | null;
+        };
+        /** UserAdminRead */
+        UserAdminRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Email */
+            email: string;
+            /** Full Name */
+            full_name: string | null;
+            /** Phone */
+            phone: string | null;
+            /** Address */
+            address: string | null;
+            /** Affiliation */
+            affiliation: string | null;
+            /** Bio */
+            bio: string | null;
+            /** Role */
+            role: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Email Verified At */
+            email_verified_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** UserCounts */
+        UserCounts: {
+            /** Total */
+            total: number;
+            /** Active */
+            active: number;
+            /** Admins */
+            admins: number;
+        };
+        /**
+         * UserRole
+         * @enum {string}
+         */
+        UserRole: "user" | "admin";
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -1554,75 +1758,6 @@ export interface operations {
             };
         };
     };
-    login_api_v1_admin_login_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AdminLoginRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    logout_api_v1_admin_logout_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    session_status_api_v1_admin_session_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminSessionStatus"];
-                };
-            };
-        };
-    };
     references_status_api_v1_library_status_get: {
         parameters: {
             query?: never;
@@ -1639,6 +1774,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReferenceCounts"];
+                };
+            };
+        };
+    };
+    admin_overview_api_v1_admin_overview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOverview"];
                 };
             };
         };
@@ -1770,6 +1925,123 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ReferenceRead"][];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_users_api_v1_admin_users_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserAdminRead"][];
+                };
+            };
+        };
+    };
+    delete_user_api_v1_admin_users__user_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_user_api_v1_admin_users__user_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateUserAdminRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserAdminRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_user_password_api_v1_admin_users__user_id__reset_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetPasswordAdminRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -2385,6 +2657,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_history_api_v1_analysis_history_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisHistoryItem"][];
+                };
+            };
+        };
+    };
+    get_history_detail_api_v1_analysis_history__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

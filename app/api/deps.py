@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import (
     _ensure_same_origin,
-    _legacy_admin_session_valid,
     _user_session_user_id,
     destroy_user_session,
 )
@@ -33,12 +32,8 @@ async def _active_user_from_cookie(request: Request, session: AsyncSession) -> U
 
 
 async def require_user(request: Request, response: Response, session: SessionDep) -> None:
-    """Gate for the main app: any active user session, or (migration) the
-    legacy shared-password admin session."""
+    """Gate for the main app: any active user session."""
     if await _active_user_from_cookie(request, session) is not None:
-        _ensure_same_origin(request)
-        return
-    if await _legacy_admin_session_valid(request):
         _ensure_same_origin(request)
         return
     # If a user cookie existed but resolved to nothing usable, drop it.
@@ -47,11 +42,7 @@ async def require_user(request: Request, response: Response, session: SessionDep
 
 
 async def require_any_admin(request: Request, response: Response, session: SessionDep) -> None:
-    """Gate for library/admin routes: a role=admin user, or (migration) the
-    legacy shared-password admin session."""
-    if await _legacy_admin_session_valid(request):
-        _ensure_same_origin(request)
-        return
+    """Gate for library/admin routes: a role=admin user session."""
     user = await _active_user_from_cookie(request, session)
     if user is not None and user.role == UserRole.ADMIN:
         _ensure_same_origin(request)
@@ -60,8 +51,7 @@ async def require_any_admin(request: Request, response: Response, session: Sessi
 
 
 async def get_current_user(request: Request, session: SessionDep) -> User:
-    """The authenticated user row; 401 if only a legacy admin session (no
-    user account) is present."""
+    """The authenticated user row, or 401."""
     user = await _active_user_from_cookie(request, session)
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Authentication required")

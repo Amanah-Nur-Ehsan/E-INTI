@@ -1,4 +1,5 @@
 "use client";
+import { AuthBrandMark } from "@/components/auth/AuthBrandMark";
 
 import Link from "next/link";
 import { useState } from "react";
@@ -6,18 +7,21 @@ import { Button } from "@/components/ui/button";
 import { useRegister } from "@/lib/api/hooks";
 
 export function RegisterForm() {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [affiliation, setAffiliation] = useState("");
+  const [bio, setBio] = useState("");
   const register = useRegister();
 
   const mismatch = confirm.length > 0 && confirm !== password;
 
   return (
     <div className="w-full">
-      <p className="font-serif text-2xl font-semibold tracking-tight text-[#0C2D48] lg:hidden">
-        CitationINTI
-      </p>
+      <AuthBrandMark />
       <h2 className="mt-1 text-2xl font-semibold tracking-tight text-[#0C2D48] lg:mt-0">
         Create account
       </h2>
@@ -29,19 +33,31 @@ export function RegisterForm() {
         className="mt-7 flex flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault();
-          register.mutate({ email, password });
+          register.mutate({ email, password, full_name: name, phone, address, affiliation, bio });
         }}
       >
+        <label className="block">
+          <span className="text-sm font-medium text-[#1E3A5F]">Name</span>
+          <input
+            type="text"
+            required
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Your name"
+            className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
+          />
+        </label>
+
         <label className="block">
           <span className="text-sm font-medium text-[#1E3A5F]">Email</span>
           <input
             type="email"
             required
-            autoFocus
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@university.edu"
-            className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
+            className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
           />
         </label>
 
@@ -54,7 +70,7 @@ export function RegisterForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="At least 8 characters"
-            className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
+            className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
           />
         </label>
 
@@ -66,9 +82,55 @@ export function RegisterForm() {
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
             placeholder="Repeat your password"
-            className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
+            className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
           />
         </label>
+
+        <div className="mt-1 border-t border-red-100 pt-4">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Optional details</p>
+          <div className="mt-3 flex flex-col gap-4">
+            <label className="block">
+              <span className="text-sm font-medium text-[#1E3A5F]">Phone</span>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Phone number"
+                className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-[#1E3A5F]">Address</span>
+              <input
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Address"
+                className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-[#1E3A5F]">Affiliation</span>
+              <input
+                type="text"
+                value={affiliation}
+                onChange={(e) => setAffiliation(e.target.value)}
+                placeholder="Institution or affiliation"
+                className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-[#1E3A5F]">Bio</span>
+              <textarea
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                placeholder="Short bio"
+                rows={3}
+                className="mt-1.5 w-full resize-none rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
+              />
+            </label>
+          </div>
+        </div>
 
         {mismatch && (
           <p className="text-sm text-red-600" role="alert">
@@ -84,15 +146,15 @@ export function RegisterForm() {
         <Button
           type="submit"
           size="lg"
-          disabled={!email || !password || password.length < 8 || mismatch || register.isPending}
-          className="h-11 rounded-lg bg-sky-600 text-white shadow-sm hover:bg-sky-700 focus-visible:ring-sky-300"
+          disabled={!name || !email || !password || password.length < 8 || mismatch || register.isPending}
+          className="h-11 rounded-lg bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:ring-red-300"
         >
           {register.isPending ? "Creating account…" : "Create account"}
         </Button>
       </form>
 
       {register.isSuccess && (
-        <p className="mt-4 rounded-lg bg-sky-50 px-3.5 py-2.5 text-sm text-sky-800">
+        <p className="mt-4 rounded-lg bg-zinc-50 px-3.5 py-2.5 text-sm text-zinc-700">
           Check your email for an activation link before signing in.
         </p>
       )}
@@ -100,7 +162,7 @@ export function RegisterForm() {
       <div className="mt-4 text-sm">
         <Link
           href="/login"
-          className="font-medium text-sky-600 hover:text-sky-700 hover:underline"
+          className="font-medium text-red-600 hover:text-red-700 hover:underline"
         >
           Already have an account? Sign in
         </Link>

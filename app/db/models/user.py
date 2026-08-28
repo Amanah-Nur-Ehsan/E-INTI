@@ -18,6 +18,10 @@ class User(UUIDPrimaryKey, TimestampMixin, Base):
 
     email: Mapped[str] = mapped_column(Text, nullable=False, unique=True, index=True)
     full_name: Mapped[str | None] = mapped_column(Text)
+    phone: Mapped[str | None] = mapped_column(Text)
+    address: Mapped[str | None] = mapped_column(Text)
+    affiliation: Mapped[str | None] = mapped_column(Text)
+    bio: Mapped[str | None] = mapped_column(Text)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     role: Mapped[str] = mapped_column(Text, default="user", server_default="user")
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

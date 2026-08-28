@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -31,3 +32,9 @@ class AnalysisRun(UUIDPrimaryKey, TimestampMixin, Base):
 
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    #: Frozen snapshot of the completed run's full result (draft, SDG,
+    #: claims, recommendations, accepted citations), so the History screen
+    #: can show a past analysis even after the live rows change.
+    result_json: Mapped[dict | None] = mapped_column(JSONB)
+

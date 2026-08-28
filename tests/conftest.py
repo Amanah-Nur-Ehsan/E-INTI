@@ -15,6 +15,9 @@ os.environ.setdefault(
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
+ADMIN_EMAIL = "admin@test.com"
+ADMIN_PASSWORD = "admin-pass-123"
+
 
 @pytest.fixture(scope="session")
 def settings():
@@ -73,18 +76,44 @@ async def anon_client(clean_db) -> AsyncIterator:
         yield c
 
 
+class _EmailStub:
+    def __init__(self):
+        self.messages: list[tuple[str, str, str]] = []
+
+    def send(self, to: str, subject: str, text: str, html: str) -> None:
+        self.messages.append((to, subject, text))
+
+
 @pytest.fixture
-async def client(anon_client, settings) -> AsyncIterator:
-    """Admin-authenticated by default. httpx.AsyncClient carries cookies
-    across requests within one instance, so logging in once here covers
-    every call a test makes through this fixture -- including the
-    admin-gated /library/import and /library/refresh most tests only use
+async def email_stub(anon_client):
+    from app.main import app
+    from app.services.email_client import get_email_sender
+
+    stub = _EmailStub()
+    app.dependency_overrides[get_email_sender] = lambda: stub
+    yield stub
+    app.dependency_overrides.pop(get_email_sender, None)
+
+
+@pytest.fixture
+async def client(anon_client, settings, monkeypatch, email_stub) -> AsyncIterator:
+    """Role-admin-authenticated by default. Registers an admin user (email
+    in admin_emails) and activates it, so the cin_user cookie carries a
+    role=admin session covering the admin-gated routes most tests only use
     incidentally, to seed data, not to test auth itself.
     """
+    import re
+
+    monkeypatch.setattr(settings, "registration_enabled", True)
+    monkeypatch.setattr(settings, "admin_emails", [ADMIN_EMAIL])
     resp = await anon_client.post(
-        "/api/v1/admin/login", json={"password": settings.admin_password_or_default}
+        "/api/v1/auth/register", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
     )
-    assert resp.status_code == 204, f"test admin login failed: {resp.status_code} {resp.text}"
+    assert resp.status_code == 201, f"test admin registration failed: {resp.text}"
+    text = email_stub.messages[-1][2]
+    token = re.search(r"token=([A-Za-z0-9_\-]+)", text).group(1)
+    resp = await anon_client.post("/api/v1/auth/activate", json={"token": token})
+    assert resp.status_code == 204, f"test admin activation failed: {resp.text}"
     yield anon_client
 
 

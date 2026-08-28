@@ -1,12 +1,6 @@
 from starlette.requests import Request
 
-from app.core.config import get_settings
-from app.core.security import (
-    _same_origin_request,
-    check_password,
-    hash_password,
-    verify_password,
-)
+from app.core.security import _same_origin_request, hash_password, verify_password
 
 
 def _request(headers: dict[str, str], method: str = "POST") -> Request:
@@ -19,22 +13,6 @@ def _request(headers: dict[str, str], method: str = "POST") -> Request:
         "query_string": b"",
     }
     return Request(scope)
-
-
-def test_check_password_accepts_the_configured_password(monkeypatch):
-    monkeypatch.setattr(get_settings(), "admin_password", "correct-horse-battery")
-    assert check_password("correct-horse-battery") is True
-
-
-def test_check_password_rejects_wrong_password(monkeypatch):
-    monkeypatch.setattr(get_settings(), "admin_password", "correct-horse-battery")
-    assert check_password("wrong") is False
-
-
-def test_check_password_falls_back_to_dev_default_when_unset(monkeypatch):
-    monkeypatch.setattr(get_settings(), "admin_password", "")
-    assert check_password("dev") is True
-    assert check_password("") is False
 
 
 def test_same_origin_request_trusts_sec_fetch_site_same_origin():

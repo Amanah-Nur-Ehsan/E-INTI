@@ -1,4 +1,5 @@
 "use client";
+import { AuthBrandMark } from "@/components/auth/AuthBrandMark";
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -25,7 +26,7 @@ export function ResetPasswordForm() {
         </p>
         <Link
           href="/forgot-password"
-          className="mt-4 block text-sm font-medium text-sky-600 hover:text-sky-700 hover:underline"
+          className="mt-4 block text-sm font-medium text-red-600 hover:text-red-700 hover:underline"
         >
           Request a new link
         </Link>
@@ -35,9 +36,7 @@ export function ResetPasswordForm() {
 
   return (
     <div className="w-full">
-      <p className="font-serif text-2xl font-semibold tracking-tight text-[#0C2D48] lg:hidden">
-        CitationINTI
-      </p>
+      <AuthBrandMark />
       <h2 className="mt-1 text-2xl font-semibold tracking-tight text-[#0C2D48] lg:mt-0">
         Choose a new password
       </h2>
@@ -65,7 +64,7 @@ export function ResetPasswordForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="At least 8 characters"
-            className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
+            className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
           />
         </label>
 
@@ -77,7 +76,7 @@ export function ResetPasswordForm() {
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
             placeholder="Repeat your new password"
-            className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
+            className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
           />
         </label>
 
@@ -96,7 +95,7 @@ export function ResetPasswordForm() {
           type="submit"
           size="lg"
           disabled={!password || password.length < 8 || mismatch || reset.isPending}
-          className="h-11 rounded-lg bg-sky-600 text-white shadow-sm hover:bg-sky-700 focus-visible:ring-sky-300"
+          className="h-11 rounded-lg bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:ring-red-300"
         >
           {reset.isPending ? "Saving…" : "Set new password"}
         </Button>

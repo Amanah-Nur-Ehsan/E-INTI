@@ -48,6 +48,42 @@ async def test_second_run_is_rejected_while_one_is_active(client, seeded_draft, 
     assert "already in progress" in resp.json()["detail"]
 
 
+async def test_completed_run_stores_result_snapshot(client, seeded_draft, db_session):
+    from app.db.models import AnalysisRun
+
+    await client.post(f"/api/v1/drafts/{seeded_draft}/analysis/run")
+    run = db_session.query(AnalysisRun).one()
+    assert run.result_json is not None
+    assert run.result_json["draft"]["filename"]
+    assert "sdg" in run.result_json
+    assert isinstance(run.result_json["claims"], list)
+    assert run.result_json["summary"]["claims_total"] >= 0
+
+
+async def test_history_lists_and_returns_detail(client, seeded_draft):
+    await client.post(f"/api/v1/drafts/{seeded_draft}/analysis/run")
+
+    list_resp = await client.get("/api/v1/analysis/history")
+    assert list_resp.status_code == 200
+    items = list_resp.json()
+    assert len(items) >= 1
+    item = items[0]
+    assert item["status"] == RunStatus.COMPLETED
+    assert item["filename"]
+
+    detail_resp = await client.get(f"/api/v1/analysis/history/{item['run_id']}")
+    assert detail_resp.status_code == 200
+    detail = detail_resp.json()
+    assert detail["run"]["id"] == item["run_id"]
+    assert "raw_text" in detail["draft"]
+    assert isinstance(detail["claims"], list)
+
+
+async def test_history_requires_login(anon_client):
+    resp = await anon_client.get("/api/v1/analysis/history")
+    assert resp.status_code == 401
+
+
 async def test_references_status_endpoint(client):
     await upload_draft(client)
     await import_dataset(client)

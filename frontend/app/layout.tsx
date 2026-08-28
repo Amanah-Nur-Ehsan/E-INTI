@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CitationINTI",
+  title: "INTI Citation",
   description: "Find and insert Scopus-indexed citations for your draft.",
 };
 
@@ -26,9 +26,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full bg-sky-50 antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full bg-white antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-sky-50 text-slate-900">
+      <body className="min-h-full flex flex-col bg-white text-slate-900">
         <QueryProvider>{children}</QueryProvider>
       </body>
     </html>

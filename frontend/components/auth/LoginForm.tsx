@@ -1,4 +1,5 @@
 "use client";
+import { AuthBrandMark } from "@/components/auth/AuthBrandMark";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -21,9 +22,7 @@ export function LoginForm() {
 
   return (
     <div className="w-full">
-      <p className="font-serif text-2xl font-semibold tracking-tight text-[#0C2D48] lg:hidden">
-        CitationINTI
-      </p>
+      <AuthBrandMark />
       <h2 className="mt-1 text-2xl font-semibold tracking-tight text-[#0C2D48] lg:mt-0">
         Sign in
       </h2>
@@ -50,7 +49,7 @@ export function LoginForm() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@university.edu"
-            className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
+            className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
           />
         </label>
 
@@ -62,7 +61,7 @@ export function LoginForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Your password"
-            className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
+            className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
           />
         </label>
 
@@ -76,7 +75,7 @@ export function LoginForm() {
           type="submit"
           size="lg"
           disabled={!email || !password || login.isPending}
-          className="h-11 rounded-lg bg-sky-600 text-white shadow-sm hover:bg-sky-700 focus-visible:ring-sky-300"
+          className="h-11 rounded-lg bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:ring-red-300"
         >
           {login.isPending ? "Signing in…" : "Sign in"}
         </Button>
@@ -84,13 +83,13 @@ export function LoginForm() {
         <div className="flex items-center justify-between text-sm">
           <Link
             href="/forgot-password"
-            className="font-medium text-sky-600 hover:text-sky-700 hover:underline"
+            className="font-medium text-red-600 hover:text-red-700 hover:underline"
           >
             Forgot password?
           </Link>
           <Link
             href="/register"
-            className="font-medium text-sky-600 hover:text-sky-700 hover:underline"
+            className="font-medium text-red-600 hover:text-red-700 hover:underline"
           >
             Create account
           </Link>

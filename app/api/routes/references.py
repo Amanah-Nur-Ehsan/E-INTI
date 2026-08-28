@@ -2,10 +2,10 @@
 
 `router` is public: `GET /library/status` is polled by the unauthenticated
 main page (it leaks only aggregate counts), so it must NOT sit behind
-`require_admin`. Everything else here is an admin action (importing the
+`require_any_admin`. Everything else here is an admin action (importing the
 dataset, triggering enrichment, listing/browsing raw rows, downloading the
 missing-abstracts template) and lives on `admin_router`, which carries
-`dependencies=[Depends(require_admin)]` at the router level rather than
+`dependencies=[Depends(require_any_admin)]` at the router level rather than
 per-route -- a per-route decorator is one forgotten annotation away from
 an open admin endpoint; a router-level dependency can't be forgotten on a
 route added later.

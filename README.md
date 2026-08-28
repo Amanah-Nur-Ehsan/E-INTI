@@ -64,9 +64,9 @@ There **is** per-user authentication, with two layers:
   block), log in, and reset a lost password. Sessions are Redis-backed
   HttpOnly cookies (`cin_user`), same pattern as the admin cookie.
 - **Roles**: `user` (the whole main app — upload, analyze, review, export)
-  and `admin` (also the reference library import/enrich). Emails listed in
-  `ADMIN_EMAILS` become `admin` at registration. The legacy shared-password
-  admin login (`/admin`) still works as a bootstrap path during migration.
+  and `admin` (also the reference library and user management). Emails
+  listed in `ADMIN_EMAILS` become `admin` at registration; admins sign in
+  through the normal `/auth/login` and land on the `/admin` dashboard.
 
 There is no per-user *data* ownership yet: `drafts` has no owner column, so
 every authenticated user sees the same (single-tenant) drafts and library.

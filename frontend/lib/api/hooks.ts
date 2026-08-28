@@ -24,6 +24,87 @@ type ActivateRequest = components["schemas"]["ActivateRequest"];
 type ForgotPasswordRequest = components["schemas"]["ForgotPasswordRequest"];
 type ResetPasswordRequest = components["schemas"]["ResetPasswordRequest"];
 type UpdateProfileRequest = components["schemas"]["UpdateProfileRequest"];
+type UserAdminRead = components["schemas"]["UserAdminRead"];
+type UpdateUserAdminRequest = components["schemas"]["UpdateUserAdminRequest"];
+type ResetPasswordAdminRequest = components["schemas"]["ResetPasswordAdminRequest"];
+type AdminOverview = components["schemas"]["AdminOverview"];
+type AnalysisHistoryItem = components["schemas"]["AnalysisHistoryItem"];
+
+// The stored analysis-result snapshot (result_json). Hand-typed because the
+// backend returns it as a raw dict.
+export interface AnalysisReference {
+  title: string;
+  authors: string[] | null;
+  year: number | null;
+  source: string | null;
+  doi: string | null;
+  scopus_url: string | null;
+  citation_count: number | null;
+}
+
+export interface AnalysisRecommendation {
+  id: string;
+  rank: number;
+  score: number;
+  label: string | null;
+  verdict: string;
+  usage: string | null;
+  evidence: string | null;
+  limitations: string | null;
+  decision: string;
+  note: string | null;
+  reference: AnalysisReference;
+}
+
+export interface AnalysisClaimSnapshot {
+  id: string;
+  sentence: string;
+  claim_text: string | null;
+  claim_type: string | null;
+  needs_citation: boolean;
+  section: string | null;
+  recommendations: AnalysisRecommendation[];
+}
+
+export interface AnalysisSnapshot {
+  run: {
+    id: string;
+    status: string;
+    stage: string | null;
+    error: string | null;
+    started_at: string | null;
+    finished_at: string | null;
+    created_at: string | null;
+  };
+  draft: {
+    id: string;
+    filename: string;
+    mime_type: string;
+    language_code: string | null;
+    raw_text: string | null;
+    created_at: string | null;
+  };
+  sdg: {
+    number: number | null;
+    name: string | null;
+    keyword: string | null;
+    rationale: string | null;
+    closest_number: number | null;
+    closest_name: string | null;
+  };
+  summary: {
+    claims_total: number;
+    claims_needing_citation: number;
+    recommendations: number;
+    accepted: number;
+  };
+  claims: AnalysisClaimSnapshot[];
+  accepted_citations: {
+    claim_id: string;
+    citation_text: string | null;
+    reference: AnalysisReference;
+  }[];
+}
 
 const RUNNING_STATUSES = new Set(["PENDING", "RUNNING"]);
 
@@ -115,6 +196,13 @@ export function useDraft(draftId: string) {
     queryKey: ["drafts", draftId],
     queryFn: () => api.get("/api/v1/drafts/{draft_id}", { params: { draft_id: draftId } }),
     enabled: Boolean(draftId),
+  });
+}
+
+export function useDrafts() {
+  return useQuery({
+    queryKey: ["drafts"],
+    queryFn: () => api.get("/api/v1/drafts") as Promise<DraftRead[]>,
   });
 }
 
@@ -228,39 +316,6 @@ export function useCreateExport(draftId: string) {
   });
 }
 
-// -- Admin ------------------------------------------------------------
-
-/** 401 means "not logged in", not a real error -- retry: false so the
- * admin page can render its login form on the very first failed check
- * without a loading flicker or a retry backoff delay first. */
-export function useAdminSession() {
-  return useQuery({
-    queryKey: ["admin", "session"],
-    queryFn: () => api.get("/api/v1/admin/session"),
-    retry: false,
-  });
-}
-
-export function useAdminLogin() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (password: string) => api.post("/api/v1/admin/login", { body: { password } }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "session"] });
-    },
-  });
-}
-
-export function useAdminLogout() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => api.post("/api/v1/admin/logout"),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "session"] });
-    },
-  });
-}
-
 // -- User auth ------------------------------------------------------------
 
 /** 401 means "not logged in", not a real error -- retry: false so pages
@@ -290,8 +345,6 @@ export function useLogout() {
     mutationFn: () => api.post("/api/v1/auth/logout"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["auth", "session"] });
-      // /admin/session is a separate query; logout clears that session too.
-      queryClient.invalidateQueries({ queryKey: ["admin", "session"] });
     },
   });
 }
@@ -339,6 +392,71 @@ export function useUpdateProfile() {
   });
 }
 
+// -- Admin user management -------------------------------------------------
+
+export function useAdminUsers() {
+  return useQuery({
+    queryKey: ["admin", "users"],
+    queryFn: () => api.get("/api/v1/admin/users") as Promise<UserAdminRead[]>,
+  });
+}
+
+export function useAdminOverview() {
+  return useQuery({
+    queryKey: ["admin", "overview"],
+    queryFn: () => api.get("/api/v1/admin/overview") as Promise<AdminOverview>,
+  });
+}
+
+export function useAnalysisHistory() {
+  return useQuery({
+    queryKey: ["analysis", "history"],
+    queryFn: () => api.get("/api/v1/analysis/history") as Promise<AnalysisHistoryItem[]>,
+  });
+}
+
+export function useAnalysisHistoryDetail(runId: string) {
+  return useQuery({
+    queryKey: ["analysis", "history", runId],
+    queryFn: () =>
+      api.get("/api/v1/analysis/history/{run_id}", {
+        params: { run_id: runId },
+      }) as unknown as Promise<AnalysisSnapshot>,
+    enabled: Boolean(runId),
+  });
+}
+
+export function useUpdateUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, body }: { userId: string; body: UpdateUserAdminRequest }) =>
+      api.patch("/api/v1/admin/users/{user_id}", { params: { user_id: userId }, body }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
+  });
+}
+
+export function useResetUserPassword() {
+  return useMutation({
+    mutationFn: ({ userId, newPassword }: { userId: string; newPassword: string }) =>
+      api.post("/api/v1/admin/users/{user_id}/reset-password", {
+        params: { user_id: userId },
+        body: { new_password: newPassword } satisfies ResetPasswordAdminRequest,
+      }),
+  });
+}
+
+export function useDeleteUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => api.delete("/api/v1/admin/users/{user_id}", { params: { user_id: userId } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
+  });
+}
+
 export type {
   DraftRead,
   DraftDetail,
@@ -360,4 +478,9 @@ export type {
   ForgotPasswordRequest,
   ResetPasswordRequest,
   UpdateProfileRequest,
+  UserAdminRead,
+  UpdateUserAdminRequest,
+  ResetPasswordAdminRequest,
+  AdminOverview,
+  AnalysisHistoryItem,
 };

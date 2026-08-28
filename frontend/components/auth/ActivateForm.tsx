@@ -1,4 +1,5 @@
 "use client";
+import { AuthBrandMark } from "@/components/auth/AuthBrandMark";
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -29,7 +30,7 @@ export function ActivateForm() {
         </p>
         <Link
           href="/login"
-          className="mt-4 block text-sm font-medium text-sky-600 hover:text-sky-700 hover:underline"
+          className="mt-4 block text-sm font-medium text-red-600 hover:text-red-700 hover:underline"
         >
           Go to sign in
         </Link>
@@ -39,9 +40,7 @@ export function ActivateForm() {
 
   return (
     <div className="w-full">
-      <p className="font-serif text-2xl font-semibold tracking-tight text-[#0C2D48] lg:hidden">
-        CitationINTI
-      </p>
+      <AuthBrandMark />
       <h2 className="mt-1 text-2xl font-semibold tracking-tight text-[#0C2D48] lg:mt-0">
         Activate account
       </h2>
@@ -57,7 +56,7 @@ export function ActivateForm() {
           </p>
           <Link
             href="/login"
-            className="mt-4 block text-sm font-medium text-sky-600 hover:text-sky-700 hover:underline"
+            className="mt-4 block text-sm font-medium text-red-600 hover:text-red-700 hover:underline"
           >
             Go to sign in
           </Link>
@@ -66,13 +65,13 @@ export function ActivateForm() {
 
       {activate.isSuccess && (
         <>
-          <p className="mt-6 rounded-lg bg-sky-50 px-3.5 py-2.5 text-sm text-sky-800">
-            Your account is active. Welcome to CitationINTI.
+          <p className="mt-6 rounded-lg bg-green-50 px-3.5 py-2.5 text-sm text-green-800">
+            Your account is active. Welcome to INTI Citation.
           </p>
           <Button
             type="button"
             size="lg"
-            className="mt-4 h-11 rounded-lg bg-sky-600 text-white shadow-sm hover:bg-sky-700 focus-visible:ring-sky-300"
+            className="mt-4 h-11 rounded-lg bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:ring-red-300"
             onClick={() => router.push("/")}
           >
             Continue

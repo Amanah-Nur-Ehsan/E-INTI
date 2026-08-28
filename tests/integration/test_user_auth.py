@@ -222,6 +222,10 @@ async def test_login_sets_cookie_and_session_reports_user(
         "email": USER_EMAIL,
         "role": "user",
         "full_name": None,
+        "phone": None,
+        "address": None,
+        "affiliation": None,
+        "bio": None,
     }
 
 
@@ -309,6 +313,49 @@ async def test_update_profile_requires_login(anon_client):
     assert resp.status_code == 401
 
 
+async def test_register_accepts_profile_fields(
+    anon_client, email_stub, settings, monkeypatch, db_session
+):
+    monkeypatch.setattr(settings, "registration_enabled", True)
+    resp = await anon_client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": USER_EMAIL,
+            "password": PASSWORD,
+            "full_name": "Budi",
+            "phone": "0812",
+            "address": "Jl. Sudirman",
+            "affiliation": "Universitas Indonesia",
+            "bio": "Researcher",
+        },
+    )
+    assert resp.status_code == 201
+    user = db_session.query(User).filter(User.email == USER_EMAIL).one()
+    assert user.phone == "0812"
+    assert user.address == "Jl. Sudirman"
+    assert user.affiliation == "Universitas Indonesia"
+    assert user.bio == "Researcher"
+
+
+async def test_update_profile_sets_all_fields(user_client):
+    resp = await user_client.patch(
+        "/api/v1/auth/me",
+        json={
+            "full_name": "Budi",
+            "phone": "0812",
+            "address": "Jl. Sudirman",
+            "affiliation": "UI",
+            "bio": "Researcher",
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["phone"] == "0812"
+    assert body["affiliation"] == "UI"
+    assert body["bio"] == "Researcher"
+    assert body["address"] == "Jl. Sudirman"
+
+
 # -- Password reset --------------------------------------------------------
 
 
@@ -382,11 +429,6 @@ async def test_main_app_endpoints_require_login(anon_client):
         assert resp.status_code == 401, (method, url, resp.status_code)
 
 
-async def test_legacy_admin_session_can_access_main_app(client):
-    resp = await client.get("/api/v1/drafts")
-    assert resp.status_code == 200
-
-
 async def test_user_can_access_main_app(user_client):
     resp = await user_client.get("/api/v1/drafts")
     assert resp.status_code == 200
@@ -406,12 +448,6 @@ async def test_admin_user_can_import_library(admin_user_client):
         "/api/v1/library/import", files={"file": ("sample_dataset.xlsx", data)}
     )
     assert resp.status_code == 201
-
-
-async def test_admin_session_recognizes_role_admin_user(admin_user_client):
-    resp = await admin_user_client.get("/api/v1/admin/session")
-    assert resp.status_code == 200
-    assert resp.json() == {"authenticated": True}
 
 
 async def test_cross_site_post_with_valid_user_cookie_is_rejected(user_client):
@@ -439,7 +475,6 @@ def test_production_requires_non_localhost_public_url(monkeypatch):
     with pytest.raises(ValueError, match="APP_PUBLIC_URL"):
         Settings(
             environment="production",
-            admin_password="x" * 12,
             registration_enabled=True,
             smtp_host="smtp.x.com",
         )

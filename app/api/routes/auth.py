@@ -11,7 +11,6 @@ from sqlalchemy import select
 from app.api.deps import SessionDep, UserDep
 from app.core.config import get_settings
 from app.core.security import (
-    _legacy_admin_session_valid,
     _user_session_user_id,
     create_user_session,
     destroy_user_session,
@@ -41,6 +40,10 @@ EmailSenderDep = Annotated[EmailSender, Depends(get_email_sender)]
 
 def _token_hash(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _clean_optional(value: str | None) -> str | None:
+    return value.strip() if value and value.strip() else None
 
 
 async def _issue_token(
@@ -94,8 +97,15 @@ async def register(
             status.HTTP_409_CONFLICT, "An account with this email already exists"
         )
 
-    full_name = body.full_name.strip() if body.full_name and body.full_name.strip() else None
-    user = User(email=email, password_hash=hash_password(body.password), full_name=full_name)
+    user = User(
+        email=email,
+        password_hash=hash_password(body.password),
+        full_name=_clean_optional(body.full_name),
+        phone=_clean_optional(body.phone),
+        address=_clean_optional(body.address),
+        affiliation=_clean_optional(body.affiliation),
+        bio=_clean_optional(body.bio),
+    )
     if email in settings.admin_emails_set:
         user.role = UserRole.ADMIN
     session.add(user)
@@ -177,14 +187,17 @@ async def session_status(
         user = await session.get(User, uuid.UUID(user_id)) if _is_uuid(user_id) else None
         if user is not None and user.is_active:
             return AuthSessionStatus(
-                authenticated=True, email=user.email, role=user.role, full_name=user.full_name
+                authenticated=True,
+                email=user.email,
+                role=user.role,
+                full_name=user.full_name,
+                phone=user.phone,
+                address=user.address,
+                affiliation=user.affiliation,
+                bio=user.bio,
             )
         # Stale cookie: row gone or deactivated -- clear it and fall through.
         await destroy_user_session(request, response)
-
-    if await _legacy_admin_session_valid(request):
-        # Migration bridge: the shared-password admin is still an admin.
-        return AuthSessionStatus(authenticated=True, role=UserRole.ADMIN)
 
     return AuthSessionStatus(authenticated=False)
 
@@ -193,11 +206,27 @@ async def session_status(
 async def update_profile(
     body: UpdateProfileRequest, user: UserDep, session: SessionDep
 ) -> AuthSessionStatus:
-    """Update the signed-in user's profile (currently just their name)."""
-    user.full_name = body.full_name.strip() if body.full_name and body.full_name.strip() else None
+    """Update the signed-in user's profile."""
+    if body.full_name is not None:
+        user.full_name = _clean_optional(body.full_name)
+    if body.phone is not None:
+        user.phone = _clean_optional(body.phone)
+    if body.address is not None:
+        user.address = _clean_optional(body.address)
+    if body.affiliation is not None:
+        user.affiliation = _clean_optional(body.affiliation)
+    if body.bio is not None:
+        user.bio = _clean_optional(body.bio)
     await session.commit()
     return AuthSessionStatus(
-        authenticated=True, email=user.email, role=user.role, full_name=user.full_name
+        authenticated=True,
+        email=user.email,
+        role=user.role,
+        full_name=user.full_name,
+        phone=user.phone,
+        address=user.address,
+        affiliation=user.affiliation,
+        bio=user.bio,
     )
 
 
