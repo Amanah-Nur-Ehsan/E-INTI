@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.api.deps import SessionDep, UserDep
 from app.core.config import get_settings
@@ -149,6 +149,31 @@ async def activate(body: ActivateRequest, session: SessionDep, response: Respons
     await session.commit()
     # Auto-login after activation so the user lands on the app, not the login page.
     await create_user_session(response, str(user.id))
+
+
+@router.post("/resend-activation", status_code=status.HTTP_204_NO_CONTENT)
+async def resend_activation(
+    body: ForgotPasswordRequest, session: SessionDep, sender: EmailSenderDep
+) -> None:
+    """Issue a fresh activation email for a registered-but-unactivated account
+    (e.g. the previous link expired). Always 204 so it can't be used to
+    enumerate which addresses are registered."""
+    settings = get_settings()
+    email = body.email.lower()
+    user = await session.scalar(select(User).where(User.email == email))
+    if user is not None and not user.is_active:
+        await session.execute(
+            delete(UserToken).where(
+                UserToken.user_id == user.id, UserToken.kind == UserTokenKind.ACTIVATION
+            )
+        )
+        raw = await _issue_token(
+            session, user.id, UserTokenKind.ACTIVATION, settings.activation_token_ttl_seconds
+        )
+        await session.commit()
+        link = f"{settings.app_public_url}/activate?token={raw}"
+        text, html = _activation_email(link)
+        await asyncio.to_thread(sender.send, email, "Activate your account", text, html)
 
 
 @router.post("/login", status_code=status.HTTP_204_NO_CONTENT)

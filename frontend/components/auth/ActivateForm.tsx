@@ -5,14 +5,16 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { useActivate } from "@/lib/api/hooks";
+import { useActivate, useResendActivation } from "@/lib/api/hooks";
 
 export function ActivateForm() {
   const router = useRouter();
   const params = useSearchParams();
   const token = params.get("token") ?? "";
   const activate = useActivate();
+  const resend = useResendActivation();
   const [attempted, setAttempted] = useState(false);
+  const [email, setEmail] = useState("");
 
   useEffect(() => {
     if (token && !attempted) {
@@ -52,7 +54,8 @@ export function ActivateForm() {
       {activate.isError && (
         <>
           <p className="mt-6 rounded-lg bg-red-50 px-3.5 py-2.5 text-sm text-red-700" role="alert">
-            {(activate.error as Error).message}
+            This activation link is invalid or has expired. Your account may already be active —
+            try signing in, or request a new link.
           </p>
           <Link
             href="/login"
@@ -60,6 +63,39 @@ export function ActivateForm() {
           >
             Go to sign in
           </Link>
+
+          <form
+            className="mt-6 border-t border-red-100 pt-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              resend.mutate({ email });
+            }}
+          >
+            <p className="text-sm font-medium text-[#1E3A5F]">Resend activation email</p>
+            <div className="mt-2 flex items-start gap-2">
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@university.edu"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
+              />
+              <Button type="submit" disabled={!email || resend.isPending} className="shrink-0">
+                {resend.isPending ? "Sending…" : "Send"}
+              </Button>
+            </div>
+            {resend.isSuccess && (
+              <p className="mt-2 text-sm text-green-700">
+                If that address has an unactivated account, a new link is on its way.
+              </p>
+            )}
+            {resend.isError && (
+              <p className="mt-2 text-sm text-red-600" role="alert">
+                {(resend.error as Error).message}
+              </p>
+            )}
+          </form>
         </>
       )}
 

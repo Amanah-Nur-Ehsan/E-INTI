@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from sqlalchemy import select
 
-from app.api.deps import DraftDep, SessionDep
+from app.api.deps import DraftDep, SessionDep, UserDep
 from app.core.config import get_settings
 from app.core.uploads import save_upload_capped
 from app.db.models import Draft
@@ -22,7 +22,9 @@ MIME_BY_SUFFIX = {
 
 
 @router.post("/drafts/upload", response_model=DraftRead, status_code=status.HTTP_201_CREATED)
-async def upload_draft(session: SessionDep, file: UploadFile = File(...)) -> Draft:
+async def upload_draft(
+    session: SessionDep, user: UserDep, file: UploadFile = File(...)
+) -> Draft:
     filename = file.filename or "draft.docx"
     suffix = Path(filename).suffix.lower()
     if suffix not in SUPPORTED_SUFFIXES:
@@ -39,6 +41,7 @@ async def upload_draft(session: SessionDep, file: UploadFile = File(...)) -> Dra
 
     draft = Draft(
         id=draft_id,
+        owner_id=user.id,
         original_filename=filename,
         storage_path=str(storage_path),
         mime_type=file.content_type or MIME_BY_SUFFIX[suffix],
@@ -50,8 +53,10 @@ async def upload_draft(session: SessionDep, file: UploadFile = File(...)) -> Dra
 
 
 @router.get("/drafts", response_model=list[DraftRead])
-async def list_drafts(session: SessionDep) -> list[Draft]:
-    result = await session.execute(select(Draft).order_by(Draft.created_at.desc()))
+async def list_drafts(session: SessionDep, user: UserDep) -> list[Draft]:
+    result = await session.execute(
+        select(Draft).where(Draft.owner_id == user.id).order_by(Draft.created_at.desc())
+    )
     return list(result.scalars())
 
 

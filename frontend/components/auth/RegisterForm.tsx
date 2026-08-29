@@ -2,22 +2,22 @@
 import { AuthBrandMark } from "@/components/auth/AuthBrandMark";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { PasswordInput } from "@/components/PasswordInput";
 import { useRegister } from "@/lib/api/hooks";
 
 export function RegisterForm() {
+  const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [affiliation, setAffiliation] = useState("");
   const [bio, setBio] = useState("");
   const register = useRegister();
-
-  const mismatch = confirm.length > 0 && confirm !== password;
 
   return (
     <div className="w-full">
@@ -33,7 +33,10 @@ export function RegisterForm() {
         className="mt-7 flex flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault();
-          register.mutate({ email, password, full_name: name, phone, address, affiliation, bio });
+          register.mutate(
+            { email, password, full_name: name, phone, address, affiliation, bio },
+            { onSuccess: () => router.push(`/login?registered=${encodeURIComponent(email)}`) },
+          );
         }}
       >
         <label className="block">
@@ -63,25 +66,13 @@ export function RegisterForm() {
 
         <label className="block">
           <span className="text-sm font-medium text-[#1E3A5F]">Password</span>
-          <input
-            type="password"
+          <PasswordInput
             required
             minLength={8}
+            autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="At least 8 characters"
-            className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
-          />
-        </label>
-
-        <label className="block">
-          <span className="text-sm font-medium text-[#1E3A5F]">Confirm password</span>
-          <input
-            type="password"
-            required
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            placeholder="Repeat your password"
             className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
           />
         </label>
@@ -132,11 +123,6 @@ export function RegisterForm() {
           </div>
         </div>
 
-        {mismatch && (
-          <p className="text-sm text-red-600" role="alert">
-            Passwords do not match
-          </p>
-        )}
         {register.isError && (
           <p className="text-sm text-red-600" role="alert">
             {(register.error as Error).message}
@@ -146,18 +132,12 @@ export function RegisterForm() {
         <Button
           type="submit"
           size="lg"
-          disabled={!name || !email || !password || password.length < 8 || mismatch || register.isPending}
+          disabled={!name || !email || !password || password.length < 8 || register.isPending}
           className="h-11 rounded-lg bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:ring-red-300"
         >
           {register.isPending ? "Creating account…" : "Create account"}
         </Button>
       </form>
-
-      {register.isSuccess && (
-        <p className="mt-4 rounded-lg bg-zinc-50 px-3.5 py-2.5 text-sm text-zinc-700">
-          Check your email for an activation link before signing in.
-        </p>
-      )}
 
       <div className="mt-4 text-sm">
         <Link

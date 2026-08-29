@@ -20,7 +20,7 @@ class SmtpEmailSender:
     def send(self, to: str, subject: str, text: str, html: str) -> None:
         s = self._settings
         message = EmailMessage()
-        message["From"] = s.smtp_from
+        message["From"] = f"{s.smtp_from_name} <{s.smtp_from}>" if s.smtp_from_name else s.smtp_from
         message["To"] = to
         message["Subject"] = subject
         message.set_content(text)

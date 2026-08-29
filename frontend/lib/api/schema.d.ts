@@ -38,6 +38,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/resend-activation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resend Activation
+         * @description Issue a fresh activation email for a registered-but-unactivated account
+         *     (e.g. the previous link expired). Always 204 so it can't be used to
+         *     enumerate which addresses are registered.
+         */
+        post: operations["resend_activation_api_v1_auth_resend_activation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -698,8 +720,8 @@ export interface paths {
         };
         /**
          * List History
-         * @description All past analyses, newest first, with a summary drawn from each run's
-         *     stored result snapshot.
+         * @description The signed-in user's past analyses, newest first, with a summary
+         *     drawn from each run's stored result snapshot.
          */
         get: operations["list_history_api_v1_analysis_history_get"];
         put?: never;
@@ -719,7 +741,7 @@ export interface paths {
         };
         /**
          * Get History Detail
-         * @description The frozen result snapshot of one completed analysis.
+         * @description The frozen result snapshot of one of the signed-in user's analyses.
          */
         get: operations["get_history_detail_api_v1_analysis_history__run_id__get"];
         put?: never;
@@ -1573,6 +1595,37 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ActivateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resend_activation_api_v1_auth_resend_activation_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForgotPasswordRequest"];
             };
         };
         responses: {

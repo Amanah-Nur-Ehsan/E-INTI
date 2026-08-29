@@ -376,6 +376,13 @@ export function useForgotPassword() {
   });
 }
 
+export function useResendActivation() {
+  return useMutation({
+    mutationFn: (body: ForgotPasswordRequest) =>
+      api.post("/api/v1/auth/resend-activation", { body }),
+  });
+}
+
 export function useResetPassword() {
   return useMutation({
     mutationFn: (body: ResetPasswordRequest) => api.post("/api/v1/auth/reset-password", { body }),

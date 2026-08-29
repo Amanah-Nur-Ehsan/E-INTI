@@ -199,6 +199,39 @@ async def test_activate_with_expired_token_is_401(
     assert resp.status_code == 401
 
 
+async def test_resend_activation_sends_new_link(anon_client, email_stub, settings, monkeypatch):
+    monkeypatch.setattr(settings, "registration_enabled", True)
+    await anon_client.post(
+        "/api/v1/auth/register", json={"email": USER_EMAIL, "password": PASSWORD}
+    )
+    email_stub.messages.clear()
+    resp = await anon_client.post("/api/v1/auth/resend-activation", json={"email": USER_EMAIL})
+    assert resp.status_code == 204
+    assert len(email_stub.messages) == 1
+    assert "/activate?token=" in email_stub.messages[0][2]
+
+
+async def test_resend_activation_ignores_unknown_email(anon_client):
+    resp = await anon_client.post(
+        "/api/v1/auth/resend-activation", json={"email": "nobody@example.com"}
+    )
+    assert resp.status_code == 204
+
+
+async def test_resend_activation_skips_already_active_user(
+    anon_client, email_stub, settings, monkeypatch
+):
+    monkeypatch.setattr(settings, "registration_enabled", True)
+    await anon_client.post(
+        "/api/v1/auth/register", json={"email": USER_EMAIL, "password": PASSWORD}
+    )
+    await _activate_from_email(anon_client, email_stub)
+    email_stub.messages.clear()
+    resp = await anon_client.post("/api/v1/auth/resend-activation", json={"email": USER_EMAIL})
+    assert resp.status_code == 204
+    assert len(email_stub.messages) == 0
+
+
 # -- Login / logout / session ---------------------------------------------
 
 

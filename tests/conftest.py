@@ -9,6 +9,9 @@ os.environ["USE_MOCK_PROVIDERS"] = "true"
 os.environ["EMBEDDING_FAKE"] = "true"
 os.environ["RERANKER_FAKE"] = "true"
 os.environ["CELERY_TASK_ALWAYS_EAGER"] = "true"
+# Registration is off unless a test explicitly enables it (the .env may
+# have it on for the dev server; tests must not depend on that).
+os.environ["REGISTRATION_ENABLED"] = "false"
 os.environ.setdefault(
     "DATABASE_URL", "postgresql+asyncpg://dev:dev@localhost:5433/citation_test"
 )

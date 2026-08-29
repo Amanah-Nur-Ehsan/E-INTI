@@ -185,6 +185,7 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_use_tls: bool = False
     smtp_from: str = "noreply@example.org"
+    smtp_from_name: str = ""
     #: Base URL the activation/reset links in emails point at (the public
     #: frontend origin, not the API).
     app_public_url: str = "http://localhost:3100"

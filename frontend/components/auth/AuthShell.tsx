@@ -28,7 +28,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
           </div>
 
           <p className="relative max-w-sm font-serif text-3xl leading-snug">
-            Find the Scopus-indexed references your draft actually needs.
+            Find the Scopus-indexed references your draft actually needs from INTI&apos;s papers.
           </p>
 
           <p className="relative text-xs text-red-700/70">

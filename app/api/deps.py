@@ -62,9 +62,9 @@ AdminDep = Annotated[None, Depends(require_any_admin)]
 UserDep = Annotated[User, Depends(get_current_user)]
 
 
-async def get_draft_or_404(draft_id: uuid.UUID, session: SessionDep) -> Draft:
+async def get_draft_or_404(draft_id: uuid.UUID, session: SessionDep, user: UserDep) -> Draft:
     draft = await session.get(Draft, draft_id)
-    if draft is None:
+    if draft is None or draft.owner_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Draft {draft_id} not found")
     return draft
 

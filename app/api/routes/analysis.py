@@ -4,7 +4,7 @@ from celery import chain
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import func, select
 
-from app.api.deps import DraftDep, SessionDep
+from app.api.deps import DraftDep, SessionDep, UserDep
 from app.db.models import AnalysisRun, Draft, ReferencePaper
 from app.db.models.enums import RunStatus
 from app.schemas.analysis import AnalysisRunAccepted, AnalysisRunStatus, DraftSummary
@@ -38,7 +38,7 @@ def build_analysis_chain(run_id: uuid.UUID):
 @router.post(
     "/analysis/run", response_model=AnalysisRunAccepted, status_code=status.HTTP_202_ACCEPTED
 )
-async def run_analysis(draft: DraftDep, session: SessionDep) -> AnalysisRunAccepted:
+async def run_analysis(draft: DraftDep, session: SessionDep, user: UserDep) -> AnalysisRunAccepted:
     n_refs = (
         await session.execute(select(func.count()).select_from(ReferencePaper))
     ).scalar_one()
@@ -64,7 +64,7 @@ async def run_analysis(draft: DraftDep, session: SessionDep) -> AnalysisRunAccep
             status.HTTP_409_CONFLICT, f"Analysis run {active.id} is already in progress"
         )
 
-    run = AnalysisRun(draft_id=draft.id, status=RunStatus.PENDING)
+    run = AnalysisRun(draft_id=draft.id, status=RunStatus.PENDING, owner_id=user.id)
     session.add(run)
     await session.commit()
     await session.refresh(run)

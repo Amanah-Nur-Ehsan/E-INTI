@@ -12,10 +12,7 @@ export function ResetPasswordForm() {
   const params = useSearchParams();
   const token = params.get("token") ?? "";
   const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
   const reset = useResetPassword();
-
-  const mismatch = confirm.length > 0 && confirm !== password;
 
   if (!token) {
     return (
@@ -61,6 +58,7 @@ export function ResetPasswordForm() {
             required
             minLength={8}
             autoFocus
+            autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="At least 8 characters"
@@ -68,23 +66,6 @@ export function ResetPasswordForm() {
           />
         </label>
 
-        <label className="block">
-          <span className="text-sm font-medium text-[#1E3A5F]">Confirm new password</span>
-          <input
-            type="password"
-            required
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            placeholder="Repeat your new password"
-            className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
-          />
-        </label>
-
-        {mismatch && (
-          <p className="text-sm text-red-600" role="alert">
-            Passwords do not match
-          </p>
-        )}
         {reset.isError && (
           <p className="text-sm text-red-600" role="alert">
             {(reset.error as Error).message}
@@ -94,7 +75,7 @@ export function ResetPasswordForm() {
         <Button
           type="submit"
           size="lg"
-          disabled={!password || password.length < 8 || mismatch || reset.isPending}
+          disabled={!password || password.length < 8 || reset.isPending}
           className="h-11 rounded-lg bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:ring-red-300"
         >
           {reset.isPending ? "Saving…" : "Set new password"}

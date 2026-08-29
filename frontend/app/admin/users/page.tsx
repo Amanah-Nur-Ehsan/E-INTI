@@ -5,6 +5,7 @@ import { RedirectTo } from "@/components/auth/RedirectTo";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { PasswordInput } from "@/components/PasswordInput";
 import {
   useAdminUsers,
   useDeleteUser,
@@ -169,15 +170,16 @@ export default function AdminUsersPage() {
                           setResetFor(null);
                         }}
                       >
-                        <input
-                          type="password"
+                        <PasswordInput
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
                           placeholder="New password (min 8 chars)"
                           minLength={8}
                           required
                           autoFocus
-                          className="w-56 rounded-md border border-input bg-background px-2.5 py-1.5 text-sm text-foreground"
+                          autoComplete="new-password"
+                          containerClassName="w-56"
+                          className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm text-foreground"
                         />
                         <Button size="sm" type="submit" disabled={newPassword.length < 8}>
                           Set

@@ -84,6 +84,37 @@ async def test_history_requires_login(anon_client):
     assert resp.status_code == 401
 
 
+async def test_history_is_scoped_per_user(
+    client, seeded_draft, email_stub, settings, monkeypatch
+):
+    import re
+
+    import httpx
+
+    from app.main import app
+
+    monkeypatch.setattr(settings, "registration_enabled", True)
+    await client.post(f"/api/v1/drafts/{seeded_draft}/analysis/run")
+    my_runs = (await client.get("/api/v1/analysis/history")).json()
+    assert len(my_runs) == 1
+    run_id = my_runs[0]["run_id"]
+
+    # A different user sees no runs and cannot view this one.
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as other:
+        resp = await other.post(
+            "/api/v1/auth/register",
+            json={"email": "other@example.com", "password": "password123"},
+        )
+        assert resp.status_code == 201
+        text = email_stub.messages[-1][2]
+        token = re.search(r"token=([A-Za-z0-9_\-]+)", text).group(1)
+        await other.post("/api/v1/auth/activate", json={"token": token})
+
+        assert (await other.get("/api/v1/analysis/history")).json() == []
+        assert (await other.get(f"/api/v1/analysis/history/{run_id}")).status_code == 404
+
+
 async def test_references_status_endpoint(client):
     await upload_draft(client)
     await import_dataset(client)
