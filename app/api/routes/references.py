@@ -2,10 +2,10 @@
 
 `router` is public: `GET /library/status` is polled by the unauthenticated
 main page (it leaks only aggregate counts), so it must NOT sit behind
-`require_admin`. Everything else here is an admin action (importing the
+`require_any_admin`. Everything else here is an admin action (importing the
 dataset, triggering enrichment, listing/browsing raw rows, downloading the
 missing-abstracts template) and lives on `admin_router`, which carries
-`dependencies=[Depends(require_admin)]` at the router level rather than
+`dependencies=[Depends(require_any_admin)]` at the router level rather than
 per-route -- a per-route decorator is one forgotten annotation away from
 an open admin endpoint; a router-level dependency can't be forgotten on a
 route added later.
@@ -15,8 +15,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from fastapi.responses import Response
 from sqlalchemy import case, func, select
 
-from app.api.deps import SessionDep
-from app.core.security import require_admin
+from app.api.deps import SessionDep, require_any_admin
 from app.core.uploads import read_upload_capped
 from app.db.models import ReferencePaper
 from app.schemas.analysis import ReferenceCounts
@@ -26,7 +25,7 @@ from app.services.progress import reference_counts
 
 router = APIRouter(prefix="/library", tags=["library"])
 admin_router = APIRouter(
-    prefix="/library", tags=["library"], dependencies=[Depends(require_admin)]
+    prefix="/library", tags=["library"], dependencies=[Depends(require_any_admin)]
 )
 
 

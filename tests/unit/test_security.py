@@ -1,7 +1,6 @@
 from starlette.requests import Request
 
-from app.core.config import get_settings
-from app.core.security import _same_origin_request, check_password
+from app.core.security import _same_origin_request, hash_password, verify_password
 
 
 def _request(headers: dict[str, str], method: str = "POST") -> Request:
@@ -14,22 +13,6 @@ def _request(headers: dict[str, str], method: str = "POST") -> Request:
         "query_string": b"",
     }
     return Request(scope)
-
-
-def test_check_password_accepts_the_configured_password(monkeypatch):
-    monkeypatch.setattr(get_settings(), "admin_password", "correct-horse-battery")
-    assert check_password("correct-horse-battery") is True
-
-
-def test_check_password_rejects_wrong_password(monkeypatch):
-    monkeypatch.setattr(get_settings(), "admin_password", "correct-horse-battery")
-    assert check_password("wrong") is False
-
-
-def test_check_password_falls_back_to_dev_default_when_unset(monkeypatch):
-    monkeypatch.setattr(get_settings(), "admin_password", "")
-    assert check_password("dev") is True
-    assert check_password("") is False
 
 
 def test_same_origin_request_trusts_sec_fetch_site_same_origin():
@@ -59,3 +42,18 @@ def test_same_origin_request_allows_when_neither_header_present():
     """
     req = _request({"host": "veriref.pro"})
     assert _same_origin_request(req) is True
+
+
+def test_password_hash_round_trip():
+    stored = hash_password("correct-horse-battery")
+    assert verify_password("correct-horse-battery", stored) is True
+    assert verify_password("wrong", stored) is False
+
+
+def test_password_hashes_are_salted():
+    assert hash_password("same-password") != hash_password("same-password")
+
+
+def test_verify_password_fails_closed_on_malformed_stored_hash():
+    for bad in ("", "not-a-hash", "pbkdf2_sha256$abc", "argon2$1$2$3$4"):
+        assert verify_password("anything", bad) is False

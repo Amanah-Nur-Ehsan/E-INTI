@@ -56,7 +56,7 @@ export function SdgSummary({
   return (
     <Card className="p-3">
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-200">
+        <Badge variant="outline" className="bg-red-100 text-red-800 border-red-200">
           SDG {sdgNumber}
         </Badge>
         <span className="text-foreground">{sdgName}</span>

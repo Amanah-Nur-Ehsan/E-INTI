@@ -72,7 +72,7 @@ export function ReferenceCard({ draftId, item }: { draftId: string; item: BestRe
         </p>
       )}
       {meets_threshold && !is_recommended && (
-        <p className="mb-2 rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800">
+        <p className="mb-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-800">
           Clears the {item.min_score_threshold}% threshold but not the{" "}
           {item.recommended_score_threshold}% recommended bar.
         </p>
@@ -125,7 +125,7 @@ export function ReferenceCard({ draftId, item }: { draftId: string; item: BestRe
               href={`https://doi.org/${reference.doi}`}
               target="_blank"
               rel="noreferrer"
-              className="text-xs text-sky-700 underline"
+              className="text-xs text-red-700 underline"
             >
               DOI
             </a>

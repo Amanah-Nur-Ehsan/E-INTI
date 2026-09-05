@@ -86,6 +86,9 @@ class PipelineTask(Task):
                 run = session.get(AnalysisRun, rid)
                 run.status = RunStatus.COMPLETED
                 run.finished_at = datetime.now(UTC)
+                from app.services.analysis_snapshot import build_run_snapshot
+
+                run.result_json = build_run_snapshot(session, rid)
                 session.commit()
 
         return run_id

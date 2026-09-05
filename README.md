@@ -58,10 +58,18 @@ non-local deployment. `MAX_UPLOAD_MB` (default 25) caps draft and dataset upload
 dev; once set, every request must carry a matching `X-API-Key` header on routes
 that opt into `app.core.security.require_api_key`.
 
-There is **no per-user authentication or authorization yet** — every endpoint is
-open, and `projects` has no owner column. This is a deliberate MVP scope (the
-product spec explicitly excludes multi-user auth), not an oversight, but it means
-this API must not be exposed to untrusted networks as-is.
+There **is** per-user authentication, with two layers:
+- **User accounts**: register (invite-only via `REGISTRATION_ENABLED=true`),
+  activate via email (always real SMTP — see the `.env.example` user-auth
+  block), log in, and reset a lost password. Sessions are Redis-backed
+  HttpOnly cookies (`cin_user`), same pattern as the admin cookie.
+- **Roles**: `user` (the whole main app — upload, analyze, review, export)
+  and `admin` (also the reference library and user management). Emails
+  listed in `ADMIN_EMAILS` become `admin` at registration; admins sign in
+  through the normal `/auth/login` and land on the `/admin` dashboard.
+
+There is no per-user *data* ownership yet: `drafts` has no owner column, so
+every authenticated user sees the same (single-tenant) drafts and library.
 
 ## Running
 

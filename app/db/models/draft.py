@@ -1,7 +1,9 @@
+import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, Text
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKey
@@ -10,6 +12,11 @@ from app.db.models.enums import ParseStatus
 
 class Draft(UUIDPrimaryKey, TimestampMixin, Base):
     __tablename__ = "drafts"
+
+    #: User who uploaded the draft -- each user sees only their own drafts.
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
 
     original_filename: Mapped[str] = mapped_column(Text, nullable=False)
     storage_path: Mapped[str] = mapped_column(Text, nullable=False)

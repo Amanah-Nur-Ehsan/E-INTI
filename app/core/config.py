@@ -1,4 +1,3 @@
-import logging
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -161,40 +160,51 @@ class Settings(BaseSettings):
     max_upload_mb: int = 25
     cors_origins: list[str] = ["http://localhost:3000"]
 
-    # Admin auth: one shared password, exchanged for a server-side session
-    # (Redis-backed opaque cookie -- see app/core/security.py). There is no
-    # per-user model; "admin" means anyone with this one password. Unlike
-    # the api_key seam this replaces (which silently disabled auth when
-    # unset -- a real fail-open trap), production is not allowed to run
-    # with an empty password: see _fail_fast_on_missing_keys below.
-    #
-    # "development" is the only environment that gets a free pass, and only
-    # because local dev needs to work with a bare `.env` -- an empty
-    # password there defaults to "dev" (see admin_password_or_default)
-    # rather than disabling the gate, so there is no code path anywhere
-    # that means "auth off".
+    # "development" is the only environment that gets a free pass on the
+    # stricter production checks (see _fail_fast_on_missing_keys).
     environment: str = "development"
-    admin_password: str = ""
-    admin_session_ttl_seconds: int = 43200  # 12h
     #: None -> derive from `environment` (Secure in production, not in dev
     #: so localhost-over-http still works). Set explicitly to override.
-    admin_cookie_secure: bool | None = None
+    cookie_secure: bool | None = None
+
+    # User authentication (per-user accounts with roles -- see
+    # app/core/security.py and app/api/routes/auth.py). Registration is
+    # invite-only: off until REGISTRATION_ENABLED=true, because opening
+    # public signup is a deployment decision, not a default. Email is
+    # always real SMTP (no mock): the fail-fast validator below refuses to
+    # start with registration on and no SMTP host.
+    registration_enabled: bool = False
+    #: Comma-separated emails that become role=admin automatically at
+    #: registration. Kept as a plain string (not a list) because
+    #: pydantic-settings chokes on an empty ADMIN_EMAILS= for list fields.
+    admin_emails: str = ""
+    user_session_ttl_seconds: int = 43200  # 12h
+    activation_token_ttl_seconds: int = 86400  # 24h
+    reset_token_ttl_seconds: int = 1800  # 30min
+    smtp_host: str = ""
+    smtp_port: int = 1025
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_use_tls: bool = False
+    smtp_from: str = "noreply@example.org"
+    smtp_from_name: str = ""
+    #: Base URL the activation/reset links in emails point at (the public
+    #: frontend origin, not the API).
+    app_public_url: str = "http://localhost:3100"
+
+    @property
+    def admin_emails_set(self) -> frozenset[str]:
+        return frozenset(
+            part.strip().lower() for part in self.admin_emails.split(",") if part.strip()
+        )
 
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
 
     @property
-    def admin_password_or_default(self) -> str:
-        if self.admin_password:
-            return self.admin_password
-        # Only reachable outside production -- _fail_fast_on_missing_keys
-        # raises before this matters if environment == "production".
-        return "dev"
-
-    @property
-    def resolved_admin_cookie_secure(self) -> bool:
-        return self.is_production if self.admin_cookie_secure is None else self.admin_cookie_secure
+    def resolved_cookie_secure(self) -> bool:
+        return self.is_production if self.cookie_secure is None else self.cookie_secure
 
     @field_validator("mock_llm", "mock_scopus", mode="before")
     @classmethod
@@ -241,20 +251,15 @@ class Settings(BaseSettings):
                 "Set the keys in .env or set USE_MOCK_PROVIDERS=true."
             )
 
-        if self.is_production:
-            if not self.admin_password:
-                raise ValueError(
-                    "ENVIRONMENT=production requires ADMIN_PASSWORD to be set -- "
-                    "there is no fail-open default outside development."
-                )
-            if len(self.admin_password) < 12:
-                raise ValueError(
-                    "ADMIN_PASSWORD must be at least 12 characters in production."
-                )
-        elif not self.admin_password:
-            logging.getLogger(__name__).warning(
-                "ADMIN_PASSWORD is unset -- defaulting to 'dev' for local development. "
-                "This default is refused outside ENVIRONMENT=production."
+        if self.registration_enabled and not self.smtp_host:
+            raise ValueError(
+                "REGISTRATION_ENABLED=true requires SMTP_HOST (email is always real SMTP -- "
+                "there is no mock email provider)."
+            )
+        if self.registration_enabled and self.is_production and "localhost" in self.app_public_url:
+            raise ValueError(
+                "ENVIRONMENT=production requires APP_PUBLIC_URL to be the real frontend origin, "
+                "not the localhost default -- activation/reset links must point at the public site."
             )
 
         return self
