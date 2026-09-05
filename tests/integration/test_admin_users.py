@@ -94,7 +94,7 @@ async def user_client(anon_client, email_stub, settings, monkeypatch):
 @pytest.fixture
 async def admin_user_client(anon_client, email_stub, settings, monkeypatch):
     monkeypatch.setattr(settings, "registration_enabled", True)
-    monkeypatch.setattr(settings, "admin_emails", [ADMIN_EMAIL])
+    monkeypatch.setattr(settings, "admin_emails", ADMIN_EMAIL)
     await _make_user(anon_client, email_stub, settings, ADMIN_EMAIL)
     return anon_client
 

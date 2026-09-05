@@ -174,8 +174,10 @@ class Settings(BaseSettings):
     # always real SMTP (no mock): the fail-fast validator below refuses to
     # start with registration on and no SMTP host.
     registration_enabled: bool = False
-    #: Emails that become role=admin automatically at registration.
-    admin_emails: list[str] = []
+    #: Comma-separated emails that become role=admin automatically at
+    #: registration. Kept as a plain string (not a list) because
+    #: pydantic-settings chokes on an empty ADMIN_EMAILS= for list fields.
+    admin_emails: str = ""
     user_session_ttl_seconds: int = 43200  # 12h
     activation_token_ttl_seconds: int = 86400  # 24h
     reset_token_ttl_seconds: int = 1800  # 30min
@@ -192,7 +194,9 @@ class Settings(BaseSettings):
 
     @property
     def admin_emails_set(self) -> frozenset[str]:
-        return frozenset(email.strip().lower() for email in self.admin_emails if email.strip())
+        return frozenset(
+            part.strip().lower() for part in self.admin_emails.split(",") if part.strip()
+        )
 
     @property
     def is_production(self) -> bool:
@@ -215,14 +219,6 @@ class Settings(BaseSettings):
     def _empty_string_is_false(cls, value: Any) -> Any:
         if isinstance(value, str) and value.strip() == "":
             return False
-        return value
-
-    @field_validator("admin_emails", mode="before")
-    @classmethod
-    def _parse_admin_emails(cls, value: Any) -> Any:
-        """ADMIN_EMAILS is a comma-separated string in .env, not JSON."""
-        if isinstance(value, str):
-            return [part.strip() for part in value.split(",") if part.strip()]
         return value
 
     @property

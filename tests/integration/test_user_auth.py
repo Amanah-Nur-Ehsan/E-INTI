@@ -92,7 +92,7 @@ async def user_client(anon_client, email_stub, settings, monkeypatch):
 async def admin_user_client(anon_client, email_stub, settings, monkeypatch):
     """A registered + activated + logged-in role=admin user."""
     monkeypatch.setattr(settings, "registration_enabled", True)
-    monkeypatch.setattr(settings, "admin_emails", [ADMIN_EMAIL])
+    monkeypatch.setattr(settings, "admin_emails", ADMIN_EMAIL)
     await _register(anon_client, ADMIN_EMAIL, settings)
     await _activate_from_email(anon_client, email_stub)
     return anon_client
@@ -138,7 +138,7 @@ async def test_register_email_in_admin_list_becomes_admin(
     anon_client, email_stub, settings, monkeypatch, db_session
 ):
     monkeypatch.setattr(settings, "registration_enabled", True)
-    monkeypatch.setattr(settings, "admin_emails", [ADMIN_EMAIL])
+    monkeypatch.setattr(settings, "admin_emails", ADMIN_EMAIL)
     await _register(anon_client, ADMIN_EMAIL, settings)
     user = db_session.query(User).filter(User.email == ADMIN_EMAIL).one()
     assert user.role == UserRole.ADMIN

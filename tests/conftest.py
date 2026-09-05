@@ -108,7 +108,7 @@ async def client(anon_client, settings, monkeypatch, email_stub) -> AsyncIterato
     import re
 
     monkeypatch.setattr(settings, "registration_enabled", True)
-    monkeypatch.setattr(settings, "admin_emails", [ADMIN_EMAIL])
+    monkeypatch.setattr(settings, "admin_emails", ADMIN_EMAIL)
     resp = await anon_client.post(
         "/api/v1/auth/register", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
     )
