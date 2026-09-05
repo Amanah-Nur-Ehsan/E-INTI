@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { FileText, History as HistoryIcon, LayoutDashboard, Library, LogOut, Menu, PanelLeftClose, User, Users } from "lucide-react";
+import { FileText, History as HistoryIcon, LayoutDashboard, Library, LogOut, Menu, PanelLeftClose, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IntiLogo } from "@/components/IntiLogo";
 import { cn } from "@/lib/utils";
@@ -113,10 +113,6 @@ export function DashboardShell({ children }: { children: ReactNode }) {
               {item.label}
             </Link>
           ))}
-          <Link href="/profile" className={lightLink("/profile")}>
-            <User className="size-4" />
-            Profile
-          </Link>
         </nav>
 
         {/* Sidebar — large screens; hidden entirely when collapsed. Same
@@ -145,12 +141,6 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                 {item.label}
               </Link>
             ))}
-          </nav>
-          <nav className="mt-auto flex flex-col gap-1">
-            <Link href="/profile" className={sidebarLink("/profile")}>
-              <User className="size-4 shrink-0" />
-              Profile
-            </Link>
           </nav>
         </aside>
 
