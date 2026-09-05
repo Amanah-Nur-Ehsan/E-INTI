@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { IntiLogo } from "@/components/IntiLogo";
 import { cn } from "@/lib/utils";
 import { useLogout, useSession } from "@/lib/api/hooks";
+import { UserMenu } from "@/components/dashboard/UserMenu";
 
 const COLLAPSE_KEY = "cin-sidebar-collapsed";
 
@@ -83,31 +84,23 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           </Link>
         </div>
         <div className="flex items-center gap-3">
-          {session?.email && (
-            <Link
-              href="/profile"
-              title="Edit profile"
-              className="hidden items-center gap-1.5 text-sm text-slate-600 hover:text-red-700 md:inline-flex"
+          {session?.email ? (
+            <UserMenu
+              name={session.full_name || session.email}
+              onSignOut={() => logout.mutate()}
+              signingOut={logout.isPending}
+            />
+          ) : (
+            <Button
+              size="sm"
+              variant="ghost"
+              className={headerGhost}
+              onClick={() => logout.mutate()}
             >
-              <User className="size-4" />
-              <span className="max-w-40 truncate">{session.full_name || session.email}</span>
-            </Link>
+              <LogOut className="size-4" />
+              <span className="hidden sm:inline">Sign out</span>
+            </Button>
           )}
-          <Button
-            size="sm"
-            variant="ghost"
-            className={headerGhost}
-            onClick={() => logout.mutate()}
-          >
-            {logout.isPending ? (
-              <LogOut className="size-4 animate-pulse" />
-            ) : (
-              <>
-                <LogOut className="size-4" />
-                <span className="hidden sm:inline">Sign out</span>
-              </>
-            )}
-          </Button>
         </div>
       </header>
 
