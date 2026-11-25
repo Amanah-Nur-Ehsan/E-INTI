@@ -331,3 +331,55 @@ def test_a_genuinely_matched_goal_with_no_lexical_keyword_still_gets_a_real_one(
     assert result["sdg_number"] == 3
     assert result["sdg_name"] == "Good health and well-being"
     assert result["sdg_keyword"] == "public health"
+
+
+def test_methodological_review_mining_paper_can_use_consumer_behaviour_keyword(
+    db_session, monkeypatch
+):
+    """The method must not hide a paper's substantive application domain.
+
+    A Yelp sentiment/rating paper may contribute an explainable NLP method, but
+    its actual object is customer behaviour and customer experience.  The
+    approved SDG 12 phrase is ``consumer behaviour`` even when neither that
+    exact phrase nor its spelling variant occurs in the paper text.
+    """
+    from app.services import sdg_classification_service as svc
+
+    draft = _make_draft(
+        db_session,
+        "We analyze Yelp reviews to predict sentiment and star ratings, with "
+        "the aim of explaining customer behaviour, purchasing decisions, "
+        "satisfaction, and service quality.",
+    )
+    picks = [
+        {
+            "fits": True,
+            "goal_number": 12,
+            "keyword": None,
+            "reason": "The study analyzes customer behaviour and satisfaction in consumer reviews.",
+        },
+        {"keyword": "consumer behaviour"},
+    ]
+
+    class _SequencedFakeClient:
+        def complete_structured(self, *, tier, system, user, schema):
+            return schema.model_validate(picks.pop(0))
+
+    monkeypatch.setattr(svc, "get_llm_client", lambda: _SequencedFakeClient())
+    monkeypatch.setattr(
+        svc,
+        "prefilter",
+        lambda text, top_n=17: [
+            svc.GoalMatch(
+                number=12,
+                name="Responsible consumption and production",
+                matched_keywords=(),
+            )
+        ],
+    )
+
+    result = svc.classify_draft(db_session, draft)
+
+    assert result["classified"] is True
+    assert result["sdg_number"] == 12
+    assert result["sdg_keyword"] == "consumer behaviour"

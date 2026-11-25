@@ -51,7 +51,12 @@ SDG_SYSTEM = (
     "paper has nothing to do with that goal. "
     "First decide whether the paper is genuinely, substantively about ANY "
     "candidate's theme -- its central research objective, application domain, "
-    "problem, or measured outcome, not merely a shared word. If yes, set fits "
+    "problem, or measured outcome, not merely a shared word. A paper may make "
+    "a methodological contribution while still fitting the SDG of the real-world "
+    "domain, population, behaviour, or outcome it analyzes. Do not reject a "
+    "paper merely because its method is AI, NLP, machine learning, statistics, "
+    "or explainability when the paper applies that method to a substantive SDG "
+    "topic. If yes, set fits "
     "to true and select that single SDG, plus (if it had one) the single "
     "matched keyword from that same SDG group that best represents the "
     "paper's actual topic, contribution, object, or measured outcome. If no "
@@ -61,9 +66,16 @@ SDG_SYSTEM = (
     "'management' appears in the paper. The keyword must be interpreted "
     "within the thematic context of its SDG group in 'SDG Goals Keywords as "
     "of 2026'. "
-    "Prioritize direct alignment with the paper's research objective, domain, "
-    "problem, evidence, and demonstrated outcome. Reject candidates supported "
-    "only by lexical similarity, speculative future applications, or indirect "
+    "Prioritize alignment with the paper's research objective, application "
+    "domain, problem, evidence, and demonstrated outcome. An analyzed dataset "
+    "or application domain is direct evidence when it is central to the paper, "
+    "even if the novel contribution is a predictive or explainable method. For "
+    "example, a paper that analyzes Yelp reviews to study customer behaviour, "
+    "purchasing decisions, satisfaction, service quality, or consumer experience "
+    "can fit SDG 12 and use the approved keyword 'consumer behaviour'; the fact "
+    "that its technical contribution is sentiment classification does not by "
+    "itself make the SDG fit indirect. Reject candidates supported only by lexical "
+    "similarity, speculative future applications, or genuinely indirect "
     "associations -- for those, set fits to false. "
     "Use only a goal_number, goal_name, and keyword provided in the candidate "
     "list. Never invent, rewrite, normalize, translate, singularize, "
@@ -109,7 +121,10 @@ Decide, then select exactly:
 
 Selection rules:
 - Choose the SDG that best matches the paper's central research purpose,
-  application domain, problem, contribution, and measured outcome.
+  application domain, problem, contribution, and measured outcome. The
+  substantive application domain counts even when the main contribution is a
+  method. For example, review mining about customer behaviour and satisfaction
+  can support SDG 12's approved keyword "consumer behaviour".
 - Treat the candidate keywords as terms sourced from "SDG Goals Keywords as
   of 2026", not as independent generic labels.
 - Interpret every keyword within the context of its own SDG group.
@@ -118,9 +133,13 @@ Selection rules:
 - A generic keyword such as "framework" is valid only when the proposed
   framework directly concerns the substantive theme of that SDG.
 - Do not use possible future applications as evidence unless they are directly
-  investigated in the paper.
+  investigated in the paper. Do use the paper's actual dataset, users,
+  behaviours, decisions, experiences, and outcomes as evidence when they are
+  central to the study.
 - Do not invent or modify the goal number, goal name, or keyword.
-- When genuinely uncertain, prefer fits=false over a forced guess.
+- When genuinely uncertain, prefer fits=false over a forced guess; do not
+  call a central application domain "uncertain" merely because the paper's
+  novelty is methodological.
 - Return JSON only."""
 
 
